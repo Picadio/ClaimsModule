@@ -14,6 +14,8 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
     internal const string Audience = "ClaimsModule.IntegrationTests.API";
 
     private readonly bool demoEnabled;
+    private readonly string environment;
+    private readonly bool? openApiEnabled;
     private readonly Dictionary<string, DemoAccount> accounts =
         new[] { UserRoles.Handler, UserRoles.Supervisor, UserRoles.Manager }
             .ToDictionary(role => role, _ => new DemoAccount(Guid.NewGuid(), RandomSecret()));
@@ -22,9 +24,11 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
     {
     }
 
-    internal ClaimsApiFactory(bool demoEnabled)
+    internal ClaimsApiFactory(bool demoEnabled, string? environment = null, bool? openApiEnabled = null)
     {
         this.demoEnabled = demoEnabled;
+        this.environment = environment ?? Environments.Development;
+        this.openApiEnabled = openApiEnabled;
     }
 
     internal byte[] SigningKey { get; } = RandomNumberGenerator.GetBytes(32);
@@ -54,7 +58,13 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
             settings[$"Authentication:Demo:Accounts:{role}:Password"] = account.Password;
         }
 
+        if (openApiEnabled is bool enabled)
+        {
+            settings["OpenApi:Enabled"] = enabled.ToString();
+        }
+
         // The API reads these settings before WebApplicationBuilder.Build().
+        builder.UseEnvironment(environment);
         builder.ConfigureHostConfiguration(configuration => configuration.AddInMemoryCollection(settings));
         return base.CreateHost(builder);
     }
