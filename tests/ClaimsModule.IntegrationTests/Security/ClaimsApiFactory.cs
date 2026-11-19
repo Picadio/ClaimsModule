@@ -16,6 +16,7 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
     private readonly bool demoEnabled;
     private readonly string environment;
     private readonly string? claimsConnection;
+    private readonly bool openApiEnabled;
     private readonly Dictionary<string, DemoAccount> accounts =
         new[] { UserRoles.Handler, UserRoles.Supervisor, UserRoles.Manager }
             .ToDictionary(role => role, _ => new DemoAccount(Guid.NewGuid(), RandomSecret()));
@@ -28,11 +29,12 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
     }
 
     internal ClaimsApiFactory(bool demoEnabled, string? environment = null,
-        string? claimsConnection = null, Guid? organizationId = null)
+        string? claimsConnection = null, Guid? organizationId = null, bool openApiEnabled = false)
     {
         this.demoEnabled = demoEnabled;
         this.environment = environment ?? Environments.Development;
         this.claimsConnection = claimsConnection;
+        this.openApiEnabled = openApiEnabled;
         OrganizationId = organizationId ?? Guid.NewGuid();
     }
 
@@ -52,7 +54,8 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
             ["Authentication:Jwt:Audience"] = Audience,
             ["Authentication:Jwt:SigningKey"] = Convert.ToBase64String(SigningKey),
             ["Authentication:Demo:Enabled"] = demoEnabled.ToString(),
-            ["Authentication:Demo:OrganizationEntityId"] = OrganizationId.ToString("D")
+            ["Authentication:Demo:OrganizationEntityId"] = OrganizationId.ToString("D"),
+            ["OpenApi:Enabled"] = openApiEnabled.ToString()
         };
         foreach (var (role, account) in accounts)
         {
