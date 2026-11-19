@@ -18,22 +18,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up .NET Core
+      - name: Set up .NET 9
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.x'
+          dotnet-version: '9.0.x'
 
-      - name: Build with dotnet
-        run: dotnet build --configuration Release
+      - name: Publish ClaimsModule API
+        run: dotnet publish src/ClaimsModule.API/ClaimsModule.API.csproj --configuration Release --runtime linux-x64 --self-contained true --output publish
 
-      - name: dotnet publish
-        run: dotnet publish -c Release -o ${{env.DOTNET_ROOT}}/myapp
+      - name: Package the API
+        run: tar -czf claims-api.tar.gz -C publish .
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
         with:
           name: .net-app
-          path: ${{env.DOTNET_ROOT}}/myapp
+          path: claims-api.tar.gz
+          if-no-files-found: error
 
   deploy:
     runs-on: ubuntu-latest
@@ -47,7 +48,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: .net-app
-      
+
+      - name: Extract the API
+        run: |
+          mkdir publish
+          tar -xzf claims-api.tar.gz -C publish
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -61,5 +67,14 @@ jobs:
         with:
           app-name: 'ClaimsModule'
           slot-name: 'Production'
-          package: .
-          
+          package: publish
+          startup-command: 'cd /home/site/wwwroot && chmod +x ClaimsModule.API && exec ./ClaimsModule.API'
+
+      - name: Verify public Swagger
+        env:
+          WEBAPP_URL: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+        run: |
+          curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors --max-time 15 "${WEBAPP_URL%/}/openapi/v1.json" -o openapi.json
+          jq -e '.paths | has("/api/auth/me")' openapi.json
+          curl --fail --silent --show-error --max-time 15 "${WEBAPP_URL%/}/swagger/index.html" -o swagger.html
+          grep -Fq 'ClaimsModule API' swagger.html
