@@ -52,19 +52,17 @@ public sealed class SwaggerTests(ClaimsApiFactory factory) : IClassFixture<Claim
         Assert.False(login.TryGetProperty("security", out var security) && security.GetArrayLength() > 0);
     }
 
-    [Theory]
-    [InlineData(null, HttpStatusCode.Unauthorized)]
-    [InlineData(true, HttpStatusCode.OK)]
-    public async Task ProductionRequiresOptInToExposeTheUiAndDocument(bool? enabled, HttpStatusCode expected)
+    [Fact]
+    public async Task ProductionDoesNotExposeTheUiAndDocument()
     {
         await using var production = new ClaimsApiFactory(demoEnabled: false,
-            environment: Environments.Production, openApiEnabled: enabled);
+            environment: Environments.Production);
         using var client = production.CreateApiClient();
 
         using var page = await client.GetAsync(SwaggerIndex);
         using var document = await client.GetAsync(DocumentPath);
 
-        Assert.Equal(expected, page.StatusCode);
-        Assert.Equal(expected, document.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, page.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, document.StatusCode);
     }
 }

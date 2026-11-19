@@ -16,6 +16,8 @@ public sealed class DemoTokenIssuer
     private readonly string audience;
     private readonly SigningCredentials signingCredentials;
 
+    public bool Enabled { get; }
+
     internal DemoTokenIssuer(IConfigurationSection configuration, string issuer, string audience,
         SecurityKey signingKey)
     {
@@ -47,8 +49,6 @@ public sealed class DemoTokenIssuer
             }
         }
     }
-
-    public bool Enabled { get; }
 
     public DemoTokenResponse? Issue(string username, string password)
     {

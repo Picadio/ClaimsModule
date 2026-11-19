@@ -15,24 +15,26 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
 
     private readonly bool demoEnabled;
     private readonly string environment;
-    private readonly bool? openApiEnabled;
+    private readonly string? claimsConnection;
     private readonly Dictionary<string, DemoAccount> accounts =
         new[] { UserRoles.Handler, UserRoles.Supervisor, UserRoles.Manager }
             .ToDictionary(role => role, _ => new DemoAccount(Guid.NewGuid(), RandomSecret()));
+
+    internal byte[] SigningKey { get; } = RandomNumberGenerator.GetBytes(32);
+    internal Guid OrganizationId { get; }
 
     public ClaimsApiFactory() : this(demoEnabled: true)
     {
     }
 
-    internal ClaimsApiFactory(bool demoEnabled, string? environment = null, bool? openApiEnabled = null)
+    internal ClaimsApiFactory(bool demoEnabled, string? environment = null,
+        string? claimsConnection = null, Guid? organizationId = null)
     {
         this.demoEnabled = demoEnabled;
         this.environment = environment ?? Environments.Development;
-        this.openApiEnabled = openApiEnabled;
+        this.claimsConnection = claimsConnection;
+        OrganizationId = organizationId ?? Guid.NewGuid();
     }
-
-    internal byte[] SigningKey { get; } = RandomNumberGenerator.GetBytes(32);
-    internal Guid OrganizationId { get; } = Guid.NewGuid();
 
     internal DemoAccount Account(string role) => accounts[role];
 
@@ -58,9 +60,9 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
             settings[$"Authentication:Demo:Accounts:{role}:Password"] = account.Password;
         }
 
-        if (openApiEnabled is bool enabled)
+        if (claimsConnection is not null)
         {
-            settings["OpenApi:Enabled"] = enabled.ToString();
+            settings["ConnectionStrings:Claims"] = claimsConnection;
         }
 
         // The API reads these settings before WebApplicationBuilder.Build().
