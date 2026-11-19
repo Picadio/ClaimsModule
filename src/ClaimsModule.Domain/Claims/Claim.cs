@@ -15,6 +15,7 @@ public sealed class Claim : OrganizationRecord
     public Guid? PolicyId { get; private set; }
     public string? PolicyNumber { get; private set; }
     public string? ClientName { get; private set; }
+    public Guid? AssignedHandlerId { get; private set; }
     public LossEvent LossEvent { get; private set; } = null!;
     public IReadOnlyList<ClaimParty> Parties => parties.AsReadOnly();
     public IReadOnlyList<ClaimRiskObject> RiskObjects => riskObjects.AsReadOnly();

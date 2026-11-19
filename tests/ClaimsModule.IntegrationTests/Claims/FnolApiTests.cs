@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using AutoMapper;
 using ClaimsModule.API.Security;
 using ClaimsModule.Application.Claims;
+using ClaimsModule.Application.Reference;
 using ClaimsModule.Application.Security;
 using ClaimsModule.Domain.Claims;
 using ClaimsModule.IntegrationTests.Security;
@@ -33,6 +34,49 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
         using var response = await client.PostAsJsonAsync(ClaimsPath, ValidRequest());
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/api/claims")]
+    [InlineData("/api/policies/search?q=Meridian")]
+    [InlineData("/api/policies/1a46cfff-f909-44dc-ad15-000000000001/coverage")]
+    [InlineData("/api/reference/cause-of-loss-codes")]
+    public async Task ClaimsAndReferenceReadsRequireAuthentication(string path)
+    {
+        using var client = factory.CreateApiClient();
+        using var response = await client.GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/api/claims?page=0", "Page")]
+    [InlineData("/api/claims?status=Draft&status=Open&pageSize=101", "PageSize")]
+    [InlineData("/api/claims?page=2147483647", "Page")]
+    [InlineData("/api/claims?dateFrom=2025-06-02&dateTo=2025-06-01", "DateTo")]
+    public async Task ClaimListRejectsInvalidFiltersBeforeQueryingSql(string path, string invalidField)
+    {
+        using var client = factory.CreateApiClient();
+        await Authenticate(client, factory);
+        using var response = await client.GetAsync(path);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty(invalidField, out _));
+    }
+
+    [Theory]
+    [InlineData("/api/policies/search?q=", 256, "Q")]
+    [InlineData("/api/reference/cause-of-loss-codes?perilCategory=", 51, "PerilCategory")]
+    public async Task ReferenceReadsRejectOverlongFilters(string path, int length, string invalidField)
+    {
+        using var client = factory.CreateApiClient();
+        await Authenticate(client, factory);
+        using var response = await client.GetAsync(path + new string('x', length));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty(invalidField, out _));
     }
 
     [Fact]
@@ -94,10 +138,17 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
         Assert.Equal(id.CurrentValue, context.Entry(claim.LossEvent).Property(row => row.ClaimId).CurrentValue);
         Assert.Equal(id.CurrentValue, context.Entry(Assert.Single(claim.Parties)).Property(row => row.ClaimId).CurrentValue);
 
-        var sql = context.Set<Claim>().ToQueryString();
+        var statuses = new[] { ClaimStatus.Draft, ClaimStatus.Open };
+        var sql = context.Set<Claim>().Where(row => statuses.Contains(row.Status))
+            .OrderByDescending(row => row.CreatedAt).ThenByDescending(row => row.Id)
+            .Skip(20).Take(20)
+            .Select(row => new { row.Status, row.LossEvent.LossDate, row.AssignedHandlerId })
+            .ToQueryString();
         Assert.Contains("[OrganizationEntityId] =", sql);
         Assert.Contains(user.OrganizationEntityId.ToString("D"), sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("[IsDeleted]", sql);
+        Assert.Contains("FETCH NEXT", sql);
+        Assert.Contains("[AssignedHandlerId]", sql);
     }
 
     [SqlServerFact]
@@ -117,6 +168,7 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
             using var client = sqlApi.CreateApiClient();
             await Authenticate(client, sqlApi);
             var request = ValidRequest();
+            var selectedPolicy = await VerifyReferenceData(client);
 
             using var invalid = await client.PostAsJsonAsync(ClaimsPath,
                 request with { LossEvent = request.LossEvent with { CauseOfLossCode = "UNRECOGNIZED" } });
@@ -135,7 +187,9 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
             using var conflict = await Post(client, request with { ClaimType = "Vehicle" }, "first-claim");
             Assert.Equal(HttpStatusCode.Conflict, conflict.StatusCode);
 
-            var concurrent = await Task.WhenAll(Post(client, request, "second-claim"), Post(client, request, "third-claim"));
+            var linkedRequest = request with { PolicyId = selectedPolicy.PolicyId };
+            var concurrent = await Task.WhenAll(Post(client, linkedRequest, "second-claim"),
+                Post(client, request, "third-claim"));
             using var secondResponse = concurrent[0];
             using var thirdResponse = concurrent[1];
             var second = await ReadCreated(secondResponse);
@@ -149,11 +203,26 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
             Assert.Single(read.Parties);
             Assert.Equal(request.LossEvent.LossDescription, read.LossEvent.LossDescription);
 
+            var handlerId = sqlApi.Account(UserRoles.Handler).UserId;
+            await context.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE dbo.Claims SET AssignedHandlerId = {handlerId}
+                WHERE OrganizationEntityId = {SeededOrganization} AND Id = {second.Id}
+                """);
+            await VerifyClaimList(client, first, second, third, selectedPolicy.PolicyId, handlerId);
+
             await using var otherApi = new ClaimsApiFactory(demoEnabled: true, claimsConnection: database.ConnectionString);
             using var otherClient = otherApi.CreateApiClient();
             await Authenticate(otherClient, otherApi);
             using var hidden = await otherClient.GetAsync(firstRequest.Headers.Location);
             Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+            using var hiddenCoverage = await otherClient.GetAsync($"/api/policies/{selectedPolicy.PolicyId}/coverage");
+            Assert.Equal(HttpStatusCode.NotFound, hiddenCoverage.StatusCode);
+            Assert.Empty(await otherClient.GetFromJsonAsync<PolicySearchResult[]>("/api/policies/search?q=Meridian") ?? []);
+            Assert.Empty(await otherClient.GetFromJsonAsync<CauseOfLossCode[]>("/api/reference/cause-of-loss-codes") ?? []);
+            var hiddenList = await otherClient.GetFromJsonAsync<ClaimPage>(ClaimsPath, ResponseJson);
+            Assert.NotNull(hiddenList);
+            Assert.Equal(0, hiddenList.TotalCount);
+            Assert.Empty(hiddenList.Items);
 
             var correlationId = Guid.Parse(Assert.Single(firstRequest.Headers.GetValues("X-Correlation-ID")));
             var auditRows = await context.Database.SqlQuery<int>($"""
@@ -175,6 +244,47 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
         new LossDetails(new DateTimeOffset(2025, 6, 1, 10, 0, 0, TimeSpan.Zero), "COL-FIRE",
             "A fire damaged the insured warehouse."),
         [new PartyDetails(ClaimPartyRole.Claimant, ClaimPartyType.Person, "Alex", "Taylor")]);
+
+    private static async Task<PolicySearchResult> VerifyReferenceData(HttpClient client)
+    {
+        var hits = await client.GetFromJsonAsync<PolicySearchResult[]>("/api/policies/search?q=Meridian");
+        var policy = Assert.Single(Assert.IsType<PolicySearchResult[]>(hits));
+        Assert.Equal("POL-2024-001001", policy.PolicyNumber);
+        Assert.Contains("Vehicle", policy.CoverageTypes);
+
+        var coverage = await client.GetFromJsonAsync<PolicyCoverage>($"/api/policies/{policy.PolicyId}/coverage");
+        Assert.NotNull(coverage);
+        Assert.Equal(policy.CoverageTypes, coverage.CoverageTypes);
+
+        var causes = await client.GetFromJsonAsync<CauseOfLossCode[]>(
+            "/api/reference/cause-of-loss-codes?perilCategory=Weather");
+        Assert.NotNull(causes);
+        Assert.Equal(new[] { "COL-FLOOD", "COL-WIND" }, causes.Select(cause => cause.Code));
+        return policy;
+    }
+
+    private static async Task VerifyClaimList(HttpClient client, CreatedClaim first, CreatedClaim second,
+        CreatedClaim third, Guid policyId, Guid handlerId)
+    {
+        const string filters = "status=Draft&status=Open&dateFrom=2025-06-01&dateTo=2025-06-01&causeOfLossCode=col-fire";
+        var page1 = await client.GetFromJsonAsync<ClaimPage>($"{ClaimsPath}?{filters}&pageSize=2", ResponseJson);
+        var page2 = await client.GetFromJsonAsync<ClaimPage>($"{ClaimsPath}?{filters}&page=2&pageSize=2", ResponseJson);
+        Assert.NotNull(page1);
+        Assert.NotNull(page2);
+        Assert.Equal(3, page1.TotalCount);
+        Assert.Equal(2, page1.Items.Count);
+        Assert.Single(page2.Items);
+        var returnedIds = page1.Items.Concat(page2.Items).Select(row => row.Id).Order();
+        Assert.Equal(new[] { first.Id, second.Id, third.Id }.Order(), returnedIds);
+
+        var linked = await client.GetFromJsonAsync<ClaimPage>(
+            $"{ClaimsPath}?policyId={policyId}&assignedHandlerId={handlerId}&search=Meridian", ResponseJson);
+        Assert.NotNull(linked);
+        var match = Assert.Single(linked.Items);
+        Assert.Equal(second.Id, match.Id);
+        Assert.Equal(handlerId, match.AssignedHandlerId);
+        Assert.Equal("COL-FIRE", match.CauseOfLossCode);
+    }
 
     private static async Task Authenticate(HttpClient client, ClaimsApiFactory host)
     {

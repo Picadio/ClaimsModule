@@ -11,6 +11,12 @@ namespace ClaimsModule.API.Controllers;
 [Route("api/claims")]
 public sealed class ClaimsController(ISender sender) : ControllerBase
 {
+    [HttpGet]
+    [ProducesResponseType<ClaimPage>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    public Task<ClaimPage> List([FromQuery] ListClaimsQuery query, CancellationToken cancellationToken) =>
+        sender.Send(query, cancellationToken);
+
     [HttpPost]
     [ProducesResponseType<CreatedClaim>(StatusCodes.Status201Created)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status422UnprocessableEntity)]

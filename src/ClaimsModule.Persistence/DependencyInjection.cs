@@ -1,4 +1,5 @@
 using ClaimsModule.Application.Claims;
+using ClaimsModule.Application.Reference;
 using ClaimsModule.Persistence.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,6 +12,7 @@ public static class DependencyInjection
     {
         services.AddDbContext<ClaimsDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IClaimStore, SqlClaimStore>();
+        services.AddScoped<IReferenceDataStore, SqlReferenceDataStore>();
         services.AddScoped<IClaimUnitOfWork, SqlClaimUnitOfWork>();
         services.AddScoped<IClaimAuditLog, SqlClaimAuditLog>();
         return services;

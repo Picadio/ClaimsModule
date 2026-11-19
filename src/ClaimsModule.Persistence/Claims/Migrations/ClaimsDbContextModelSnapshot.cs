@@ -29,6 +29,9 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                         .HasColumnType("uniqueidentifier")
                         .HasDefaultValueSql("NEWSEQUENTIALID()");
 
+                    b.Property<Guid?>("AssignedHandlerId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("ClaimNumber")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -70,8 +73,8 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                         .HasColumnType("nvarchar(50)");
 
                     b.Property<byte[]>("RowVer")
-                        .IsRequired()
                         .IsConcurrencyToken()
+                        .IsRequired()
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 

@@ -5,6 +5,7 @@ namespace ClaimsModule.Application.Claims;
 public interface IClaimStore
 {
     Task<Claim?> FindAsync(Guid id, CancellationToken cancellationToken);
+    Task<ClaimPage> ListAsync(ListClaimsQuery query, CancellationToken cancellationToken);
     Task<LinkedPolicy?> FindPolicyAsync(Guid id, CancellationToken cancellationToken);
     Task<bool> IsCauseActiveAsync(string code, CancellationToken cancellationToken);
     Task<int> NextSequenceAsync(int year, CancellationToken cancellationToken);
