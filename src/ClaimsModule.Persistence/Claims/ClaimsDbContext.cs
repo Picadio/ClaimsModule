@@ -1,6 +1,7 @@
 using ClaimsModule.Application.Security;
 using ClaimsModule.Domain.Claims;
 using ClaimsModule.Domain.Common;
+using ClaimsModule.Domain.Reserves;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClaimsModule.Persistence.Claims;
@@ -23,6 +24,9 @@ public sealed class ClaimsDbContext(DbContextOptions<ClaimsDbContext> options, I
         ConfigureRecord<ClaimSubmission>(modelBuilder);
         ConfigureRecord<ClaimAuditEntry>(modelBuilder);
         ConfigureRecord<ClaimStatusSubmission>(modelBuilder);
+        ConfigureRecord<ClaimReserveComponent>(modelBuilder);
+        ConfigureRecord<ReserveHistory>(modelBuilder);
+        ConfigureRecord<ReserveSubmission>(modelBuilder);
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ClaimsDbContext).Assembly);
         ReferenceSeeds.Apply(modelBuilder);

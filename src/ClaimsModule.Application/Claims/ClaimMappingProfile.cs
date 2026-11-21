@@ -11,9 +11,11 @@ public sealed class ClaimMappingProfile : Profile
         CreateMap<ClaimParty, ClaimPartyDto>();
         CreateMap<ClaimRiskObject, ClaimRiskDto>();
         CreateMap<ClaimWarning, ClaimWarningDto>();
-        CreateMap<Claim, CreatedClaim>();
+        CreateMap<Claim, CreatedClaim>()
+            .ForMember(detail => detail.InitialReserve, member => member.Ignore());
         CreateMap<Claim, ClaimDetail>()
             .ForCtorParam(nameof(ClaimDetail.ReportedAt), member => member.MapFrom(claim => claim.CreatedAt))
-            .ForMember(detail => detail.RecentAuditEntries, member => member.Ignore());
+            .ForMember(detail => detail.RecentAuditEntries, member => member.Ignore())
+            .ForMember(detail => detail.ReserveBalances, member => member.Ignore());
     }
 }

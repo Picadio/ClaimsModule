@@ -472,6 +472,175 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                     b.ToTable("LossEvents", (string)null);
                 });
 
+            modelBuilder.Entity("ClaimsModule.Domain.Reserves.ClaimReserveComponent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWSEQUENTIALID()");
+
+                    b.Property<Guid>("ClaimId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ComponentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("CurrentAmount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<int>("LastChangeSequence")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("OrganizationEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<byte[]>("RowVer")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationEntityId", "ClaimId", "ComponentType")
+                        .IsUnique();
+
+                    b.ToTable("ClaimReserveComponents", (string)null);
+                });
+
+            modelBuilder.Entity("ClaimsModule.Domain.Reserves.ReserveHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWSEQUENTIALID()");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<string>("ApprovalStatus")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset?>("ApprovedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("ChangeReason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<int>("ChangeSequence")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("ClaimId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<decimal>("NewBalance")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<Guid>("OrganizationEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("PostingJobId")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("PostingKey")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(80)");
+
+                    b.Property<string>("PostingStatus")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<decimal>("PreviousBalance")
+                        .HasPrecision(19, 4)
+                        .HasColumnType("decimal(19,4)");
+
+                    b.Property<string>("RequiredAuthority")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("RequiresManagerOverride")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("ReserveId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TransactionType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationEntityId", "PostingKey")
+                        .IsUnique();
+
+                    b.HasIndex("OrganizationEntityId", "ClaimId", "ReserveId", "ChangeSequence")
+                        .IsUnique();
+
+                    b.ToTable("ReserveHistory", (string)null);
+                });
+
             modelBuilder.Entity("ClaimsModule.Persistence.Claims.CauseOfLoss", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1016,6 +1185,66 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                         });
                 });
 
+            modelBuilder.Entity("ClaimsModule.Persistence.Claims.ReserveSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWSEQUENTIALID()");
+
+                    b.Property<Guid>("ClaimId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("KeyHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<Guid>("OrganizationEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("ResponseJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationEntityId", "ClaimId", "CreatedByUserId", "KeyHash")
+                        .IsUnique();
+
+                    b.ToTable("ReserveSubmissions", (string)null);
+                });
+
             modelBuilder.Entity("ClaimsModule.Domain.Claims.Claim", b =>
                 {
                     b.HasOne("ClaimsModule.Persistence.Claims.Policy", null)
@@ -1072,6 +1301,26 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("ClaimsModule.Domain.Reserves.ClaimReserveComponent", b =>
+                {
+                    b.HasOne("ClaimsModule.Domain.Claims.Claim", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationEntityId", "ClaimId")
+                        .HasPrincipalKey("OrganizationEntityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClaimsModule.Domain.Reserves.ReserveHistory", b =>
+                {
+                    b.HasOne("ClaimsModule.Domain.Reserves.ClaimReserveComponent", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationEntityId", "ClaimId", "ReserveId")
+                        .HasPrincipalKey("OrganizationEntityId", "ClaimId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ClaimsModule.Persistence.Claims.ClaimAuditEntry", b =>
                 {
                     b.HasOne("ClaimsModule.Domain.Claims.Claim", null)
@@ -1093,6 +1342,16 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                 });
 
             modelBuilder.Entity("ClaimsModule.Persistence.Claims.ClaimSubmission", b =>
+                {
+                    b.HasOne("ClaimsModule.Domain.Claims.Claim", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationEntityId", "ClaimId")
+                        .HasPrincipalKey("OrganizationEntityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClaimsModule.Persistence.Claims.ReserveSubmission", b =>
                 {
                     b.HasOne("ClaimsModule.Domain.Claims.Claim", null)
                         .WithMany()

@@ -35,9 +35,9 @@ critical input before persistence, so this slice has no stored critical issues.
 `PendingPayment` requires an approved reserve. Coming from
 `UnderInvestigation` also requires `liabilityDetermined: true`. Closure blocks
 pending approvals and requires `confirmPositiveReserveBalance: true` plus a
-reason when a component has a positive balance. The current schema has no
-reserve transactions. `ReadReserveFactsAsync` therefore returns empty facts,
-and `PendingPayment` stays blocked until the reserve module supplies them.
+reason when a component has a positive balance. These checks read persisted
+reserve facts in the claim write transaction. A component with a nonzero
+approved balance qualifies for `PendingPayment`.
 
 The Unit of Work takes a transaction-owned write lock per tenant and claim.
 Future party and reserve commands should use this lock when updating facts the
@@ -52,3 +52,41 @@ the tenant and soft-delete filters on both the claim and its audit records.
 Each audit page and its count are read in the same short serializable
 transaction. Within a transition, entries sharing a timestamp have a persisted
 order.
+
+## Financial reserves
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/claims/{id}/reserves` | Submit `component`, `transactionType`, `amount` and `changeReason`. Add opens a zero-balance component. Adjust and Reverse target an existing component by type. |
+| `PUT /api/claims/{id}/reserves/{reserveId}` | Submit an Adjust or Reverse against the selected component. |
+| `GET /api/claims/{id}/reserves` | Read approved and pending amounts per component with their transaction history. |
+
+FNOL accepts an optional `initialReserve` with `component` and `amount`.
+The same reserve rules run inside the intake transaction. Submissions require
+a linked policy. Reserve writes are disabled while the claim is Closed or
+Withdrawn. POST and PUT support actor-, tenant- and claim-scoped request replay.
+
+`amount` is a signed delta. An Add must start from zero with no pending Add.
+Cost components cannot have negative balances and recovery cannot have a
+positive balance. Adjust and Reverse require an existing nonzero approved
+balance. Reverse must offset the entire balance. If a component is archived,
+its type remains reserved on that claim. Transaction history retains the
+before and projected after amounts at submission. A future approval must check
+the operation against the then-current balance before applying its delta.
+
+The absolute delta determines approval authority. The inclusive thresholds
+are $10,000 for automatic approval and $100,000 for supervisors. A submission
+that would raise the net approved total over $10 million records a warning and
+stays pending until a manager override permits approval under the amount-based
+authority rules. Only approved deltas update
+balances, independently of posting. Pending amounts are the sum of pending
+proposals. A pending opening cannot be bypassed by submitting another Add.
+
+The component balance and sequence update in the same transaction as history,
+audit and request replay. Reserve writes share the lifecycle claim lock. The
+ledger reads balances and history in one short serializable transaction.
+
+Each history row has a durable posting key derived from its reserve ID and
+change sequence. A future GL dispatcher will select only approved rows with
+pending posting. Manual approval, rejection, retraction, override and GL
+execution are separate implementation stages.

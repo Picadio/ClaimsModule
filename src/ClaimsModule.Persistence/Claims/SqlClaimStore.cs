@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ClaimsModule.Application.Claims;
 using ClaimsModule.Domain.Claims;
+using ClaimsModule.Domain.Reserves;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClaimsModule.Persistence.Claims;
@@ -65,7 +66,9 @@ internal sealed class SqlClaimStore(ClaimsDbContext db, TimeProvider clock) : IC
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
             .Select(row => new ClaimSummary(row.Id, row.ClaimNumber, row.ClientName, row.PolicyNumber,
-                row.LossEvent.LossDate, row.LossEvent.CauseOfLossCode, row.Status, 0m, row.AssignedHandlerId))
+                row.LossEvent.LossDate, row.LossEvent.CauseOfLossCode, row.Status,
+                db.Set<ClaimReserveComponent>().Where(component => component.ClaimId == row.Id)
+                    .Sum(component => component.CurrentAmount), row.AssignedHandlerId))
             .ToListAsync(cancellationToken);
 
         return new ClaimPage(rows, request.Page, request.PageSize, totalCount);

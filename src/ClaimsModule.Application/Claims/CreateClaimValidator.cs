@@ -1,3 +1,4 @@
+using ClaimsModule.Application.Reserves;
 using ClaimsModule.Domain.Claims;
 using FluentValidation;
 
@@ -21,6 +22,16 @@ internal sealed class CreateClaimValidator : AbstractValidator<CreateClaimComman
             .WithMessage("At least one claimant is required.");
         RuleForEach(command => command.Request.Parties).NotNull().SetValidator(new PartyValidator());
         RuleForEach(command => command.Request.RiskObjects!).NotNull().SetValidator(new RiskValidator());
+        RuleFor(command => command.Request.InitialReserve!).SetValidator(new InitialReserveValidator());
+    }
+
+    private sealed class InitialReserveValidator : AbstractValidator<InitialReserveRequest>
+    {
+        public InitialReserveValidator()
+        {
+            RuleFor(reserve => reserve.Component).NotNull().IsInEnum();
+            RuleFor(reserve => reserve.Amount).NotEqual(0m).PrecisionScale(19, 4, true);
+        }
     }
 
     private sealed class LossValidator : AbstractValidator<LossDetails>

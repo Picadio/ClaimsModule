@@ -168,6 +168,21 @@ public sealed class Claim : OrganizationRecord
             target == ClaimStatus.PendingPayment && previousStatus == ClaimStatus.UnderInvestigation);
     }
 
+    public void EnsureCanSubmitReserve()
+    {
+        if (PolicyId is null)
+        {
+            throw new ClaimRuleViolation("PolicyId", "Link a policy before submitting a reserve.");
+        }
+
+        if (Status is ClaimStatus.Closed or ClaimStatus.Withdrawn)
+        {
+            throw new ClaimRuleViolation("Status", "Reserves cannot be submitted on a closed or withdrawn claim.");
+        }
+    }
+
+    public void RecordReserveActivity(Guid actorId, DateTimeOffset occurredAt) => MarkUpdated(actorId, occurredAt);
+
     private IEnumerable<ClaimRuleError> GetCriticalIssues(bool causeOfLossIsActive, DateTimeOffset occurredAt)
     {
         if (LossEvent is null)

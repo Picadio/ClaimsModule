@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ClaimsModule.Application.Claims;
 using ClaimsModule.Domain.Claims;
+using ClaimsModule.Domain.Reserves;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClaimsModule.Persistence.Claims;
@@ -17,9 +18,17 @@ internal sealed class SqlClaimLifecycleStore(ClaimsDbContext db) : IClaimLifecyc
     public async Task<IReadOnlyList<ClaimTransitionRule>> ListTransitionsAsync(CancellationToken cancellationToken) =>
         await db.Set<ClaimTransitionRule>().AsNoTracking().ToListAsync(cancellationToken);
 
-    // The reserve module will read its persisted facts inside the same claim write transaction.
-    public Task<ClaimReserveFacts> ReadReserveFactsAsync(Guid claimId, CancellationToken cancellationToken) =>
-        Task.FromResult(default(ClaimReserveFacts));
+    public async Task<ClaimReserveFacts> ReadReserveFactsAsync(Guid claimId, CancellationToken cancellationToken)
+    {
+        var components = db.Set<ClaimReserveComponent>().Where(component => component.ClaimId == claimId);
+        var history = db.Set<ReserveHistory>().Where(entry => entry.ClaimId == claimId &&
+            components.Any(component => component.Id == entry.ReserveId));
+        var approved = await components.AnyAsync(component => component.CurrentAmount != 0, cancellationToken);
+        var pending = await history.AnyAsync(entry => entry.ApprovalStatus == ReserveApprovalStatus.PendingApproval,
+            cancellationToken);
+        var positive = await components.AnyAsync(component => component.CurrentAmount > 0, cancellationToken);
+        return new ClaimReserveFacts(approved, pending, positive);
+    }
 
     public async Task<StoredStatusChange?> FindStatusChangeAsync(Guid claimId, Guid userId, string keyHash,
         CancellationToken cancellationToken)

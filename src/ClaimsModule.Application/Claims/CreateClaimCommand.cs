@@ -1,7 +1,9 @@
 using AutoMapper;
 using ClaimsModule.Application.Exceptions;
+using ClaimsModule.Application.Reserves;
 using ClaimsModule.Application.Security;
 using ClaimsModule.Domain.Claims;
+using ClaimsModule.Domain.Reserves;
 using MediatR;
 
 namespace ClaimsModule.Application.Claims;
@@ -10,7 +12,8 @@ public sealed record CreateClaimCommand(CreateClaimRequest Request, string? Idem
     : IRequest<CreatedClaim>;
 
 internal sealed class CreateClaimHandler(IClaimStore store, IClaimUnitOfWork unitOfWork, ICurrentUser currentUser,
-    TimeProvider clock, IPublisher publisher, IMapper mapper) : IRequestHandler<CreateClaimCommand, CreatedClaim>
+    TimeProvider clock, IPublisher publisher, IMapper mapper, ReserveWriter reserveWriter)
+    : IRequestHandler<CreateClaimCommand, CreatedClaim>
 {
     public Task<CreatedClaim> Handle(CreateClaimCommand command, CancellationToken cancellationToken) =>
         unitOfWork.ExecuteIntakeAsync(async token =>
@@ -38,6 +41,14 @@ internal sealed class CreateClaimHandler(IClaimStore store, IClaimUnitOfWork uni
             await publisher.Publish(new ClaimCreatedNotification(claim, claim.CreatedEvent!, command.CorrelationId), token);
 
             var response = mapper.Map<CreatedClaim>(claim);
+            if (request.InitialReserve is { } initial)
+            {
+                var reserve = await reserveWriter.SubmitAsync(claim, null, initial.Component!.Value,
+                    new ReserveChange(ReserveTransactionType.Add, initial.Amount, "Initial reserve at FNOL."),
+                    user.UserId, reportedAt, command.CorrelationId, 1 + claim.Warnings.Count, token);
+                response = response with { InitialReserve = reserve };
+            }
+
             if (keyHash is not null)
             {
                 store.AddSubmission(new StoredClaimSubmission(user.UserId, keyHash, requestHash!, response));
