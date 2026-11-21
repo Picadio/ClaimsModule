@@ -21,7 +21,7 @@ public sealed class ReserveApiTests(ClaimsApiFactory factory) : IClassFixture<Cl
     private const string ReservePath = ClaimsPath + "/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/reserves";
     private static readonly Guid SeededOrganization = Guid.Parse("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4");
     private static readonly Guid SeededPolicy = Guid.Parse("1a46cfff-f909-44dc-ad15-000000000001");
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         Converters = { new JsonStringEnumConverter() }
     };
@@ -208,7 +208,7 @@ public sealed class ReserveApiTests(ClaimsApiFactory factory) : IClassFixture<Cl
         Assert.DoesNotContain(ledger.Components, component => component.Id == reserveId);
     }
 
-    private static async Task<HttpResponseMessage> SendJson<T>(HttpClient client, HttpMethod method, string path,
+    internal static async Task<HttpResponseMessage> SendJson<T>(HttpClient client, HttpMethod method, string path,
         T payload, string idempotencyKey)
     {
         using var message = new HttpRequestMessage(method, path) { Content = JsonContent.Create(payload, options: JsonOptions) };
@@ -216,7 +216,7 @@ public sealed class ReserveApiTests(ClaimsApiFactory factory) : IClassFixture<Cl
         return await client.SendAsync(message);
     }
 
-    private static async Task<T> Read<T>(HttpResponseMessage response)
+    internal static async Task<T> Read<T>(HttpResponseMessage response)
     {
         response.EnsureSuccessStatusCode();
         var value = await response.Content.ReadFromJsonAsync<T>(JsonOptions);
@@ -224,7 +224,7 @@ public sealed class ReserveApiTests(ClaimsApiFactory factory) : IClassFixture<Cl
         return value;
     }
 
-    private static async Task AssertError(HttpResponseMessage response, string field)
+    internal static async Task AssertError(HttpResponseMessage response, string field)
     {
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());

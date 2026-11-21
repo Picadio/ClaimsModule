@@ -10,7 +10,7 @@ internal sealed class ReserveWriter(IReserveStore store, IClaimUnitOfWork unitOf
 {
     public async Task<ReserveTransaction> SubmitAsync(Claim claim, ClaimReserveComponent? component,
         ReserveComponentType componentType, ReserveChange change, Guid actorId, DateTimeOffset occurredAt,
-        Guid correlationId, int auditPosition, CancellationToken cancellationToken)
+        Guid correlationId, int auditPosition, CancellationToken cancellationToken, ReserveHistory? replaces = null)
     {
         claim.EnsureCanSubmitReserve();
         if (component is null && change.TransactionType != ReserveTransactionType.Add)
@@ -28,7 +28,8 @@ internal sealed class ReserveWriter(IReserveStore store, IClaimUnitOfWork unitOf
         var currentTotal = await store.SumApprovedAsync(claim.Id, cancellationToken);
         var hasPendingAdd = change.TransactionType == ReserveTransactionType.Add &&
             await store.HasPendingAddAsync(claim.Id, component.Id, cancellationToken);
-        var entry = component.Submit(change, currentTotal, hasPendingAdd, actorId, occurredAt);
+        var entry = component.Submit(change, currentTotal, hasPendingAdd, actorId, occurredAt,
+            claim.ReserveLimitOverrideEnabled, replaces);
         store.AddHistory(entry);
         await unitOfWork.SaveAsync(cancellationToken);
 
@@ -50,7 +51,8 @@ internal sealed class RecordReserveAudit(IAuditLogService audit) : INotification
         var data = new
         {
             transaction.ReserveId, Component = transaction.Component.ToString(), transaction.Amount,
-            transaction.NewBalance, transaction.ChangeReason, ApprovalStatus = transaction.ApprovalStatus.ToString()
+            transaction.NewBalance, transaction.ChangeReason, transaction.ReplacesRejectedTransactionId,
+            ApprovalStatus = transaction.ApprovalStatus.ToString()
         };
         audit.Append(new ClaimAuditEvent(organizationId, claimId, transaction.SubmittedByUserId, transaction.CreatedAt,
             correlation, "RESERVE_CREATED", "A reserve transaction was submitted.", new { transaction.PreviousBalance },

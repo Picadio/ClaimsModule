@@ -18,6 +18,9 @@ internal sealed class GetClaimReservesHandler(IReserveStore store) : IRequestHan
         var components = ledger.Balances.Select(balance => new ReserveComponentLedger(balance.Id, balance.Component,
             balance.CurrentAmount, balance.PendingAmount,
             history[balance.Id].Select(entry => ReserveTransaction.From(entry, balance.Component)).ToArray())).ToArray();
-        return new ClaimReserveLedger(query.ClaimId, components.Sum(component => component.CurrentAmount), components);
+        return new ClaimReserveLedger(query.ClaimId, components.Sum(component => component.CurrentAmount), components)
+        {
+            ReserveLimitOverrideEnabled = ledger.ReserveLimitOverrideEnabled
+        };
     }
 }

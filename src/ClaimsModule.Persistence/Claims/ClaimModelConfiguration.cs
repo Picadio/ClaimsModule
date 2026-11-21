@@ -22,6 +22,7 @@ internal sealed class ClaimModelConfiguration :
         claim.Property(row => row.ClientName).HasMaxLength(255);
         claim.Property(row => row.ClosedAt).HasPrecision(7);
         claim.Property(row => row.ClosureReason).HasMaxLength(2000);
+        claim.Property(row => row.ReserveLimitOverrideEnabled).HasDefaultValue(false);
         claim.Property<byte[]>("RowVer").IsRequired().IsRowVersion();
         claim.Ignore(row => row.CreatedEvent);
         claim.HasIndex(row => new { row.OrganizationEntityId, row.ClaimNumber }).IsUnique();

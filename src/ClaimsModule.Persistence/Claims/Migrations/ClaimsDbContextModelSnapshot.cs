@@ -174,6 +174,11 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                         .HasMaxLength(50)
                         .HasColumnType("nvarchar(50)");
 
+                    b.Property<bool>("ReserveLimitOverrideEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<byte[]>("RowVer")
                         .IsConcurrencyToken()
                         .IsRequired()
@@ -554,6 +559,9 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                         .HasPrecision(7)
                         .HasColumnType("datetimeoffset(7)");
 
+                    b.Property<Guid?>("ApprovedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("ChangeReason")
                         .IsRequired()
                         .HasMaxLength(500)
@@ -607,6 +615,19 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                         .HasPrecision(19, 4)
                         .HasColumnType("decimal(19,4)");
 
+                    b.Property<DateTimeOffset?>("RejectedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid?>("RejectedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RejectionReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("ReplacesRejectedTransactionId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("RequiredAuthority")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -637,6 +658,8 @@ namespace ClaimsModule.Persistence.Claims.Migrations
 
                     b.HasIndex("OrganizationEntityId", "ClaimId", "ReserveId", "ChangeSequence")
                         .IsUnique();
+
+                    b.HasIndex("OrganizationEntityId", "ClaimId", "ReserveId", "ReplacesRejectedTransactionId");
 
                     b.ToTable("ReserveHistory", (string)null);
                 });
@@ -1319,6 +1342,12 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                         .HasPrincipalKey("OrganizationEntityId", "ClaimId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.HasOne("ClaimsModule.Domain.Reserves.ReserveHistory", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationEntityId", "ClaimId", "ReserveId", "ReplacesRejectedTransactionId")
+                        .HasPrincipalKey("OrganizationEntityId", "ClaimId", "ReserveId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("ClaimsModule.Persistence.Claims.ClaimAuditEntry", b =>

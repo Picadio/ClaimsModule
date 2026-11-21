@@ -1,5 +1,4 @@
 using ClaimsModule.Application.Claims;
-using ClaimsModule.Application.Exceptions;
 using ClaimsModule.Application.Security;
 using ClaimsModule.Domain.Exceptions;
 using ClaimsModule.Domain.Reserves;
@@ -18,6 +17,7 @@ internal sealed class SubmitReserveValidator : AbstractValidator<SubmitReserveCo
         RuleFor(command => command.Request.Component).NotNull().IsInEnum()
             .When(command => !command.ReserveId.HasValue);
         RuleFor(command => command.Request.TransactionType).IsInEnum();
+        RuleFor(command => command.Request.ReplacesRejectedTransactionId).NotEqual(Guid.Empty);
         RuleFor(command => command.Request.TransactionType).NotEqual(ReserveTransactionType.Add)
             .When(command => command.ReserveId.HasValue);
         RuleFor(command => command.Request.Amount).NotEqual(0m).PrecisionScale(19, 4, true);
@@ -31,7 +31,8 @@ internal sealed class SubmitReserveValidator : AbstractValidator<SubmitReserveCo
 }
 
 internal sealed class SubmitReserveHandler(IReserveStore reserves, IClaimStore claims, IClaimUnitOfWork unitOfWork,
-    ICurrentUser currentUser, TimeProvider clock, ReserveWriter writer) : IRequestHandler<SubmitReserveCommand, ReserveTransaction?>
+    ICurrentUser currentUser, TimeProvider clock, ReserveWriter writer, ReserveReplays replays)
+    : IRequestHandler<SubmitReserveCommand, ReserveTransaction?>
 {
     public Task<ReserveTransaction?> Handle(SubmitReserveCommand command, CancellationToken cancellationToken) =>
         unitOfWork.ExecuteClaimWriteAsync<ReserveTransaction?>(command.ClaimId, async token =>
@@ -55,12 +56,10 @@ internal sealed class SubmitReserveHandler(IReserveStore reserves, IClaimStore c
             }
 
             var user = currentUser.Identity;
-            var keyHash = IdempotencyFingerprint.HashKey(command.IdempotencyKey);
-            var requestHash = keyHash is null ? null : IdempotencyFingerprint.HashRequest(new { command.ReserveId, request });
-            if (keyHash is not null &&
-                await reserves.FindSubmissionAsync(claim.Id, user.UserId, keyHash, token) is { } prior)
+            var key = ReserveReplayKey.Create(command.IdempotencyKey, new { command.ReserveId, request });
+            if (await replays.ReadAsync<ReserveTransaction>(claim.Id, user.UserId, key, token) is { } prior)
             {
-                return prior.RequestHash == requestHash ? prior.Response : throw new IdempotencyConflictException();
+                return prior;
             }
 
             claim.EnsureCanSubmitReserve();
@@ -69,17 +68,26 @@ internal sealed class SubmitReserveHandler(IReserveStore reserves, IClaimStore c
                 throw new ClaimRuleViolation("PolicyId", "Link a policy before submitting a reserve.");
             }
 
+            ReserveHistory? replaces = null;
+            if (request.ReplacesRejectedTransactionId is Guid rejectedId)
+            {
+                replaces = await reserves.FindHistoryAsync(claim.Id, rejectedId, token)
+                    ?? throw new ClaimRuleViolation("ReplacesRejectedTransactionId", "Select a rejected transaction on this claim.");
+                if (await reserves.HasUncancelledRevisionAsync(claim.Id, rejectedId, token))
+                {
+                    throw new ClaimRuleViolation("ReplacesRejectedTransactionId",
+                        "This transaction already has a revision. Use the latest rejected transaction for a further revision.");
+                }
+            }
+
             var now = clock.GetUtcNow();
             claim.RecordReserveActivity(user.UserId, now);
             await unitOfWork.SaveAsync(token);
 
             var result = await writer.SubmitAsync(claim, component, component?.ComponentType ?? request.Component!.Value,
                 new ReserveChange(request.TransactionType, request.Amount, request.ChangeReason), user.UserId, now,
-                command.CorrelationId, auditPosition: 0, token);
-            if (keyHash is not null)
-            {
-                reserves.AddSubmission(new StoredReserveSubmission(claim.Id, user.UserId, now, keyHash, requestHash!, result));
-            }
+                command.CorrelationId, auditPosition: 0, token, replaces);
+            replays.Record(claim.Id, user.UserId, now, key, result);
 
             await unitOfWork.SaveAsync(token);
             return result;

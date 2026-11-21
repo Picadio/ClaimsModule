@@ -60,19 +60,24 @@ order.
 | `POST /api/claims/{id}/reserves` | Submit `component`, `transactionType`, `amount` and `changeReason`. Add opens a zero-balance component. Adjust and Reverse target an existing component by type. |
 | `PUT /api/claims/{id}/reserves/{reserveId}` | Submit an Adjust or Reverse against the selected component. |
 | `GET /api/claims/{id}/reserves` | Read approved and pending amounts per component with their transaction history. |
+| `POST /api/claims/{id}/reserves/{txnId}/approve` | Approve a pending transaction using the caller's authority and current balance. |
+| `POST /api/claims/{id}/reserves/{txnId}/reject` | Reject a pending transaction and record `rejectionReason`. |
+| `POST /api/claims/{id}/reserves/{txnId}/retract` | Cancel a pending transaction as its submitter. |
+| `PUT /api/claims/{id}/reserves/manager-override` | Enable the claim's aggregate reserve limit override as a manager and record `reason`. |
 
 FNOL accepts an optional `initialReserve` with `component` and `amount`.
-The same reserve rules run inside the intake transaction. Submissions require
-a linked policy. Reserve writes are disabled while the claim is Closed or
-Withdrawn. POST and PUT support actor-, tenant- and claim-scoped request replay.
+The same reserve rules run inside the intake transaction. Submissions and
+approvals require a linked policy and a claim outside Closed or Withdrawn.
+POST and PUT support actor-, tenant- and claim-scoped request replay.
 
 `amount` is a signed delta. An Add must start from zero with no pending Add.
 Cost components cannot have negative balances and recovery cannot have a
 positive balance. Adjust and Reverse require an existing nonzero approved
 balance. Reverse must offset the entire balance. If a component is archived,
 its type remains reserved on that claim. Transaction history retains the
-before and projected after amounts at submission. A future approval must check
-the operation against the then-current balance before applying its delta.
+before and projected after amounts at submission. Approval checks the
+operation against the current balance before applying its delta. The approval
+audit records the actual before and after amounts.
 
 The absolute delta determines approval authority. The inclusive thresholds
 are $10,000 for automatic approval and $100,000 for supervisors. A submission
@@ -81,6 +86,29 @@ stays pending until a manager override permits approval under the amount-based
 authority rules. Only approved deltas update
 balances, independently of posting. Pending amounts are the sum of pending
 proposals. A pending opening cannot be bypassed by submitting another Add.
+The transaction's override warning describes the projection at submission.
+The approval command rechecks the current net total inside the claim lock.
+
+Approve and reject use the transaction identifier from the Candidate
+Specification. The Assessment uses the label `reserveId` for those actions.
+Using the transaction identifier lets the caller select one pending adjustment
+when the component has several. Supervisors can approve or reject up to
+$100,000 per operation. Managers can review above that amount. The
+Assessment's approval tiers have no separate manager ceiling, so the $10
+million ceiling applies to the claim's signed total. The override can be
+enabled once per claim and records the manager's identity, time and reason.
+A manager still cannot approve their own transaction. The ledger reports
+whether the flag is enabled.
+
+To revise a rejected operation, submit a new transaction with
+`replacesRejectedTransactionId`. It must belong to the original submitter and
+have the same component and transaction type. The revision remains pending
+even below the auto-approval threshold. Only one uncancelled revision can
+replace a rejected transaction. After a rejection, use the latest rejected
+record for a further revision. After retraction, the same source can be revised
+again. Rejection and retraction retain the
+original financial fields and cancel posting eligibility. Cleanup remains
+available for withdrawn claims and claims whose policy has been archived.
 
 The component balance and sequence update in the same transaction as history,
 audit and request replay. Reserve writes share the lifecycle claim lock. The
@@ -88,5 +116,4 @@ ledger reads balances and history in one short serializable transaction.
 
 Each history row has a durable posting key derived from its reserve ID and
 change sequence. A future GL dispatcher will select only approved rows with
-pending posting. Manual approval, rejection, retraction, override and GL
-execution are separate implementation stages.
+pending posting. GL execution is the next implementation stage.

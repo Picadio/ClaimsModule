@@ -1,5 +1,4 @@
 using System.Data;
-using System.Text.Json;
 using ClaimsModule.Application.Reserves;
 using ClaimsModule.Domain.Claims;
 using ClaimsModule.Domain.Reserves;
@@ -27,6 +26,16 @@ internal sealed class SqlReserveStore(ClaimsDbContext db) : IReserveStore
             .AnyAsync(row => row.OrganizationEntityId == db.OrganizationId && row.ClaimId == claimId &&
                 row.ComponentType == component && row.IsDeleted, cancellationToken);
 
+    public Task<ReserveHistory?> FindHistoryAsync(Guid claimId, Guid transactionId, CancellationToken cancellationToken) =>
+        db.Set<ReserveHistory>().SingleOrDefaultAsync(entry => entry.ClaimId == claimId && entry.Id == transactionId,
+            cancellationToken);
+
+    public Task<bool> HasUncancelledRevisionAsync(Guid claimId, Guid rejectedTransactionId,
+        CancellationToken cancellationToken) =>
+        db.Set<ReserveHistory>().AnyAsync(entry => entry.ClaimId == claimId &&
+            entry.ReplacesRejectedTransactionId == rejectedTransactionId &&
+            entry.ApprovalStatus != ReserveApprovalStatus.Cancelled, cancellationToken);
+
     public Task<bool> HasPendingAddAsync(Guid claimId, Guid reserveId, CancellationToken cancellationToken) =>
         db.Set<ReserveHistory>().AnyAsync(entry => entry.ClaimId == claimId && entry.ReserveId == reserveId &&
             entry.TransactionType == ReserveTransactionType.Add && entry.ApprovalStatus == ReserveApprovalStatus.PendingApproval,
@@ -48,7 +57,9 @@ internal sealed class SqlReserveStore(ClaimsDbContext db) : IReserveStore
     public async Task<ReserveLedgerData?> ReadLedgerAsync(Guid claimId, CancellationToken cancellationToken)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
-        if (!await db.Set<Claim>().AnyAsync(claim => claim.Id == claimId, cancellationToken))
+        var limitOverrideEnabled = await db.Set<Claim>().Where(claim => claim.Id == claimId)
+            .Select(claim => (bool?)claim.ReserveLimitOverrideEnabled).SingleOrDefaultAsync(cancellationToken);
+        if (limitOverrideEnabled is null)
         {
             return null;
         }
@@ -60,7 +71,7 @@ internal sealed class SqlReserveStore(ClaimsDbContext db) : IReserveStore
             .OrderByDescending(entry => entry.ChangeSequence)
             .ToListAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new ReserveLedgerData(balances, history);
+        return new ReserveLedgerData(balances, history, limitOverrideEnabled.Value);
     }
 
     public async Task<StoredReserveSubmission?> FindSubmissionAsync(Guid claimId, Guid actorId, string keyHash,
@@ -69,7 +80,7 @@ internal sealed class SqlReserveStore(ClaimsDbContext db) : IReserveStore
         var record = await db.Set<ReserveSubmission>().AsNoTracking().SingleOrDefaultAsync(row => row.ClaimId == claimId &&
             row.CreatedByUserId == actorId && row.KeyHash == keyHash, cancellationToken);
         return record is null ? null : new StoredReserveSubmission(claimId, actorId, record.CreatedAt, keyHash,
-            record.RequestHash, JsonSerializer.Deserialize<ReserveTransaction>(record.ResponseJson)!);
+            record.RequestHash, record.ResponseJson);
     }
 
     public void AddComponent(ClaimReserveComponent component) => db.Add(component);
@@ -78,5 +89,5 @@ internal sealed class SqlReserveStore(ClaimsDbContext db) : IReserveStore
 
     public void AddSubmission(StoredReserveSubmission submission) => db.Add(new ReserveSubmission(db.OrganizationId,
         submission.ActorId, submission.OccurredAt, submission.ClaimId, submission.KeyHash, submission.RequestHash,
-        JsonSerializer.Serialize(submission.Response)));
+        submission.ResponseJson));
 }

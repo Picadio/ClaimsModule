@@ -18,6 +18,7 @@ public sealed class Claim : OrganizationRecord
     public Guid? AssignedHandlerId { get; private set; }
     public DateTimeOffset? ClosedAt { get; private set; }
     public string? ClosureReason { get; private set; }
+    public bool ReserveLimitOverrideEnabled { get; private set; }
     public LossEvent LossEvent { get; private set; } = null!;
     public IReadOnlyList<ClaimParty> Parties => parties.AsReadOnly();
     public IReadOnlyList<ClaimRiskObject> RiskObjects => riskObjects.AsReadOnly();
@@ -182,6 +183,19 @@ public sealed class Claim : OrganizationRecord
     }
 
     public void RecordReserveActivity(Guid actorId, DateTimeOffset occurredAt) => MarkUpdated(actorId, occurredAt);
+
+    public bool EnableReserveLimitOverride(Guid actorId, DateTimeOffset occurredAt)
+    {
+        EnsureCanSubmitReserve();
+        if (ReserveLimitOverrideEnabled)
+        {
+            return false;
+        }
+
+        ReserveLimitOverrideEnabled = true;
+        MarkUpdated(actorId, occurredAt);
+        return true;
+    }
 
     private IEnumerable<ClaimRuleError> GetCriticalIssues(bool causeOfLossIsActive, DateTimeOffset occurredAt)
     {

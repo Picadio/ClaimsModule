@@ -12,6 +12,7 @@ public static class DependencyInjection
     {
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<ReserveWriter>();
+        services.AddScoped<ReserveReplays>();
         services.AddMediatR(options =>
         {
             options.RegisterServicesFromAssemblyContaining<CreateClaimCommand>();

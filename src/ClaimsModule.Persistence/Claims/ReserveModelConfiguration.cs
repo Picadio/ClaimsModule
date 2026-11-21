@@ -34,11 +34,16 @@ internal sealed class ReserveModelConfiguration : IEntityTypeConfiguration<Claim
         history.Property(row => row.PostingKey).HasMaxLength(80).IsUnicode(false);
         history.Property(row => row.PostingJobId).HasMaxLength(100);
         history.Property(row => row.ApprovedAt).HasPrecision(7);
+        history.Property(row => row.RejectedAt).HasPrecision(7);
         history.HasIndex(row => new { row.OrganizationEntityId, row.ClaimId, row.ReserveId, row.ChangeSequence }).IsUnique();
         history.HasIndex(row => new { row.OrganizationEntityId, row.PostingKey }).IsUnique();
         history.HasOne<ClaimReserveComponent>().WithMany()
             .HasForeignKey(row => new { row.OrganizationEntityId, row.ClaimId, row.ReserveId })
             .HasPrincipalKey(row => new { row.OrganizationEntityId, row.ClaimId, row.Id })
+            .OnDelete(DeleteBehavior.Restrict);
+        history.HasOne<ReserveHistory>().WithMany()
+            .HasForeignKey(row => new { row.OrganizationEntityId, row.ClaimId, row.ReserveId, row.ReplacesRejectedTransactionId })
+            .HasPrincipalKey(row => new { row.OrganizationEntityId, row.ClaimId, row.ReserveId, row.Id })
             .OnDelete(DeleteBehavior.Restrict);
     }
 
