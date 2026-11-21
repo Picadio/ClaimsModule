@@ -1,3 +1,4 @@
+using ClaimsModule.Application.Claims;
 using ClaimsModule.Domain.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -8,7 +9,8 @@ internal sealed class ClaimModelConfiguration :
     IEntityTypeConfiguration<Claim>, IEntityTypeConfiguration<LossEvent>, IEntityTypeConfiguration<ClaimParty>,
     IEntityTypeConfiguration<ClaimRiskObject>, IEntityTypeConfiguration<ClaimWarning>, IEntityTypeConfiguration<Policy>,
     IEntityTypeConfiguration<CauseOfLoss>, IEntityTypeConfiguration<ClaimNumberCounter>,
-    IEntityTypeConfiguration<ClaimSubmission>, IEntityTypeConfiguration<ClaimAuditEntry>
+    IEntityTypeConfiguration<ClaimSubmission>, IEntityTypeConfiguration<ClaimAuditEntry>,
+    IEntityTypeConfiguration<ClaimStatusSubmission>, IEntityTypeConfiguration<ClaimTransitionRule>
 {
     public void Configure(EntityTypeBuilder<Claim> claim)
     {
@@ -18,6 +20,8 @@ internal sealed class ClaimModelConfiguration :
         claim.Property(row => row.Status).HasConversion<string>().HasMaxLength(50);
         claim.Property(row => row.PolicyNumber).HasMaxLength(50);
         claim.Property(row => row.ClientName).HasMaxLength(255);
+        claim.Property(row => row.ClosedAt).HasPrecision(7);
+        claim.Property(row => row.ClosureReason).HasMaxLength(2000);
         claim.Property<byte[]>("RowVer").IsRequired().IsRowVersion();
         claim.Ignore(row => row.CreatedEvent);
         claim.HasIndex(row => new { row.OrganizationEntityId, row.ClaimNumber }).IsUnique();
@@ -130,10 +134,35 @@ internal sealed class ClaimModelConfiguration :
     {
         audit.ToTable("ClaimAuditLog", table => table.UseSqlOutputClause(false));
         audit.Property(row => row.EventType).HasMaxLength(100);
-        audit.HasIndex(row => new { row.OrganizationEntityId, row.ClaimId, row.CreatedAt });
+        audit.Property(row => row.RelatedEntityType).HasMaxLength(100);
+        audit.HasIndex(row => new { row.OrganizationEntityId, row.ClaimId, row.CreatedAt, row.Position, row.Id })
+            .IsDescending(false, false, true, true, true);
         audit.HasOne<Claim>().WithMany()
             .HasForeignKey(row => new { row.OrganizationEntityId, row.ClaimId })
             .HasPrincipalKey(row => new { row.OrganizationEntityId, row.Id })
             .OnDelete(DeleteBehavior.Restrict);
+    }
+
+    public void Configure(EntityTypeBuilder<ClaimStatusSubmission> submission)
+    {
+        submission.ToTable("ClaimStatusSubmissions");
+        submission.Property(row => row.KeyHash).HasMaxLength(64).IsUnicode(false);
+        submission.Property(row => row.RequestHash).HasMaxLength(64).IsUnicode(false);
+        submission.Property(row => row.CreatedByUserId).IsRequired();
+        submission.HasIndex(row => new { row.OrganizationEntityId, row.ClaimId, row.CreatedByUserId, row.KeyHash })
+            .IsUnique();
+        submission.HasOne<Claim>().WithMany()
+            .HasForeignKey(row => new { row.OrganizationEntityId, row.ClaimId })
+            .HasPrincipalKey(row => new { row.OrganizationEntityId, row.Id })
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+
+    public void Configure(EntityTypeBuilder<ClaimTransitionRule> transition)
+    {
+        transition.ToTable("ClaimStatusTransitions");
+        transition.HasKey(row => new { row.FromStatus, row.ToStatus });
+        transition.Property(row => row.FromStatus).HasConversion<string>().HasMaxLength(50);
+        transition.Property(row => row.ToStatus).HasConversion<string>().HasMaxLength(50);
+        transition.Property(row => row.RequiredPermission).HasMaxLength(50);
     }
 }

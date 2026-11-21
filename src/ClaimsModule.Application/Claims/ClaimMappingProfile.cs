@@ -13,6 +13,7 @@ public sealed class ClaimMappingProfile : Profile
         CreateMap<ClaimWarning, ClaimWarningDto>();
         CreateMap<Claim, CreatedClaim>();
         CreateMap<Claim, ClaimDetail>()
-            .ForCtorParam(nameof(ClaimDetail.ReportedAt), member => member.MapFrom(claim => claim.CreatedAt));
+            .ForCtorParam(nameof(ClaimDetail.ReportedAt), member => member.MapFrom(claim => claim.CreatedAt))
+            .ForMember(detail => detail.RecentAuditEntries, member => member.Ignore());
     }
 }

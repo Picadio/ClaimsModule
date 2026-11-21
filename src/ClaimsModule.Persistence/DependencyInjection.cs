@@ -12,9 +12,11 @@ public static class DependencyInjection
     {
         services.AddDbContext<ClaimsDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IClaimStore, SqlClaimStore>();
+        services.AddScoped<IClaimLifecycleStore, SqlClaimLifecycleStore>();
         services.AddScoped<IReferenceDataStore, SqlReferenceDataStore>();
         services.AddScoped<IClaimUnitOfWork, SqlClaimUnitOfWork>();
-        services.AddScoped<IClaimAuditLog, SqlClaimAuditLog>();
+        services.AddScoped<IAuditLogService, SqlClaimAuditLog>();
+        services.AddScoped<IClaimAuditReader, SqlClaimAuditLog>();
         return services;
     }
 }

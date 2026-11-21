@@ -4,6 +4,8 @@ namespace ClaimsModule.Domain.Claims;
 
 public sealed class ClaimWarning : OrganizationRecord
 {
+    internal const string OutsidePolicyPeriod = "LOSS_OUTSIDE_POLICY_PERIOD";
+
     public Guid ClaimId { get; private set; }
     public string Code { get; private set; } = null!;
     public string Field { get; private set; } = null!;

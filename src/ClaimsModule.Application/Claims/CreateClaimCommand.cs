@@ -1,6 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using AutoMapper;
 using ClaimsModule.Application.Exceptions;
 using ClaimsModule.Application.Security;
@@ -20,10 +17,8 @@ internal sealed class CreateClaimHandler(IClaimStore store, IClaimUnitOfWork uni
         {
             var user = currentUser.Identity;
             var request = command.Request;
-            var keyHash = command.IdempotencyKey is null ? null :
-                Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(command.IdempotencyKey)));
-            var requestHash = keyHash is null ? null :
-                Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(request)));
+            var keyHash = IdempotencyFingerprint.HashKey(command.IdempotencyKey);
+            var requestHash = keyHash is null ? null : IdempotencyFingerprint.HashRequest(request);
 
             if (keyHash is not null && await store.FindSubmissionAsync(user.UserId, keyHash, token) is { } prior)
             {
@@ -55,23 +50,26 @@ internal sealed class CreateClaimHandler(IClaimStore store, IClaimUnitOfWork uni
 
 internal sealed record ClaimCreatedNotification(Claim Claim, ClaimCreated Event, Guid CorrelationId) : INotification;
 
-internal sealed class RecordClaimCreatedAudit(IClaimAuditLog audit) : INotificationHandler<ClaimCreatedNotification>
+internal sealed class RecordClaimCreatedAudit(IAuditLogService audit) : INotificationHandler<ClaimCreatedNotification>
 {
     public Task Handle(ClaimCreatedNotification notification, CancellationToken cancellationToken)
     {
         var (claim, created, correlationId) = notification;
-        audit.Append(claim, correlationId, "CLAIM_CREATED", "A claim was registered.",
-            JsonSerializer.Serialize(new
+        audit.Append(new ClaimAuditEvent(claim.OrganizationEntityId, claim.Id, claim.CreatedByUserId, created.OccurredAt,
+            correlationId, "CLAIM_CREATED", "A claim was registered.", NewValues: new
             {
                 claim.ClaimNumber,
                 Status = claim.Status.ToString(),
                 created.OccurredAt
             }));
 
+        var position = 1;
         foreach (var warning in claim.Warnings)
         {
-            audit.Append(claim, correlationId, "VALIDATION_ISSUE_ADDED", warning.Message,
-                JsonSerializer.Serialize(new { warning.Code, warning.Field, Severity = "Warning" }), warning.Id);
+            audit.Append(new ClaimAuditEvent(claim.OrganizationEntityId, claim.Id, claim.CreatedByUserId, created.OccurredAt,
+                correlationId, "VALIDATION_ISSUE_ADDED", warning.Message,
+                NewValues: new { warning.Code, warning.Field, Severity = "Warning" }, RelatedEntityId: warning.Id,
+                RelatedEntityType: nameof(ClaimWarning), Position: position++));
         }
 
         return Task.CompletedTask;

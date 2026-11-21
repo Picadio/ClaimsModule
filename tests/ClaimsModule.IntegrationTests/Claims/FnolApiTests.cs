@@ -20,7 +20,7 @@ namespace ClaimsModule.IntegrationTests.Claims;
 public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<ClaimsApiFactory>
 {
     private const string ClaimsPath = "/api/claims";
-    private const string SqlServerVariable = "CLAIMS_TEST_SQL_SERVER";
+    internal const string SqlServerVariable = "CLAIMS_TEST_SQL_SERVER";
     private static readonly Guid SeededOrganization = Guid.Parse("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4");
     private static readonly JsonSerializerOptions ResponseJson = new(JsonSerializerDefaults.Web)
     {
@@ -240,7 +240,7 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
         }
     }
 
-    private static CreateClaimRequest ValidRequest() => new(null, "Property",
+    internal static CreateClaimRequest ValidRequest() => new(null, "Property",
         new LossDetails(new DateTimeOffset(2025, 6, 1, 10, 0, 0, TimeSpan.Zero), "COL-FIRE",
             "A fire damaged the insured warehouse."),
         [new PartyDetails(ClaimPartyRole.Claimant, ClaimPartyType.Person, "Alex", "Taylor")]);
@@ -286,10 +286,10 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
         Assert.Equal("COL-FIRE", match.CauseOfLossCode);
     }
 
-    private static async Task Authenticate(HttpClient client, ClaimsApiFactory host)
+    internal static async Task Authenticate(HttpClient client, ClaimsApiFactory host, string role = UserRoles.Handler)
     {
         using var login = await client.PostAsJsonAsync("/api/auth/demo-token",
-            new { username = UserRoles.Handler, password = host.Account(UserRoles.Handler).Password });
+            new { username = role, password = host.Account(role).Password });
         login.EnsureSuccessStatusCode();
         var token = await login.Content.ReadFromJsonAsync<DemoTokenResponse>();
         Assert.NotNull(token);
@@ -310,17 +310,6 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
         var claim = await response.Content.ReadFromJsonAsync<CreatedClaim>(ResponseJson);
         Assert.NotNull(claim);
         return claim;
-    }
-
-    private sealed class SqlServerFactAttribute : FactAttribute
-    {
-        public SqlServerFactAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(SqlServerVariable)))
-            {
-                Skip = $"Set {SqlServerVariable} to a SQL Server connection with test database creation rights.";
-            }
-        }
     }
 
     private sealed record TestCurrentUser(UserIdentity Identity) : ICurrentUser;

@@ -9,7 +9,13 @@ public sealed record CreatedClaim(Guid Id, string ClaimNumber, ClaimStatus Statu
 
 public sealed record ClaimDetail(Guid Id, string ClaimNumber, ClaimStatus Status, string ClaimType, Guid? PolicyId,
     string? PolicyNumber, string? ClientName, DateTimeOffset ReportedAt, LossDetails LossEvent,
-    IReadOnlyList<ClaimPartyDto> Parties, IReadOnlyList<ClaimRiskDto> RiskObjects, IReadOnlyList<ClaimWarningDto> Warnings);
+    IReadOnlyList<ClaimPartyDto> Parties, IReadOnlyList<ClaimRiskDto> RiskObjects, IReadOnlyList<ClaimWarningDto> Warnings)
+{
+    public Guid? AssignedHandlerId { get; init; }
+    public DateTimeOffset? ClosedAt { get; init; }
+    public string? ClosureReason { get; init; }
+    public IReadOnlyList<ClaimAuditItem> RecentAuditEntries { get; init; } = [];
+}
 
 public sealed record ClaimPartyDto(Guid Id, ClaimPartyRole Role, ClaimPartyType PartyType, string? FirstName,
     string? LastName, string? CompanyName, string? Email, string? Phone, string? Notes, bool IsActive);

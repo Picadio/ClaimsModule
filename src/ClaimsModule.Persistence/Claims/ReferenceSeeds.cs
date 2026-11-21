@@ -1,3 +1,6 @@
+using ClaimsModule.Application.Claims;
+using ClaimsModule.Application.Security;
+using ClaimsModule.Domain.Claims;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClaimsModule.Persistence.Claims;
@@ -32,6 +35,22 @@ internal static class ReferenceSeeds
             Cause(8, "COL-WIND", "Wind / Storm", "Weather"),
             Cause(9, "COL-INJURY", "Bodily Injury", "Liability"),
             Cause(10, "COL-OTHER", "Other / Unknown", "General"));
+
+        modelBuilder.Entity<ClaimTransitionRule>().HasData(new ClaimTransitionRule[]
+        {
+            new(ClaimStatus.Draft, ClaimStatus.Open, UserRoles.Handler),
+            new(ClaimStatus.Open, ClaimStatus.UnderInvestigation, UserRoles.Handler),
+            new(ClaimStatus.Open, ClaimStatus.PendingPayment, UserRoles.Handler),
+            new(ClaimStatus.Open, ClaimStatus.Closed, UserRoles.Handler),
+            new(ClaimStatus.Open, ClaimStatus.Withdrawn, UserRoles.Handler),
+            new(ClaimStatus.UnderInvestigation, ClaimStatus.Open, UserRoles.Handler),
+            new(ClaimStatus.UnderInvestigation, ClaimStatus.PendingPayment, UserRoles.Handler),
+            new(ClaimStatus.UnderInvestigation, ClaimStatus.Closed, UserRoles.Handler),
+            new(ClaimStatus.UnderInvestigation, ClaimStatus.Withdrawn, UserRoles.Handler),
+            new(ClaimStatus.PendingPayment, ClaimStatus.Closed, UserRoles.Handler),
+            new(ClaimStatus.Closed, ClaimStatus.Reopened, UserRoles.Supervisor),
+            new(ClaimStatus.Reopened, ClaimStatus.Open, ClaimTransitionRule.SystemOnly)
+        });
     }
 
     private static object Policy(int source, string number, string client, DateOnly effective, DateOnly expiration,

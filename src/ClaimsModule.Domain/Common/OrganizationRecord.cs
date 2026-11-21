@@ -22,4 +22,10 @@ public abstract class OrganizationRecord
         CreatedByUserId = userId;
         CreatedAt = createdAt.ToUniversalTime();
     }
+
+    protected void MarkUpdated(Guid actorId, DateTimeOffset occurredAt)
+    {
+        UpdatedByUserId = actorId;
+        UpdatedAt = occurredAt.ToUniversalTime();
+    }
 }

@@ -14,9 +14,12 @@ internal sealed class ClaimExceptionHandler : IExceptionHandler
             ValidationException validation => ValidationProblem(validation.Errors
                 .GroupBy(error => error.PropertyName.Replace("Request.", "", StringComparison.Ordinal))
                 .ToDictionary(group => group.Key, group => group.Select(error => error.ErrorMessage).Distinct().ToArray())),
-            ClaimRuleViolation rule => ValidationProblem(new Dictionary<string, string[]> { [rule.Field] = [rule.Message] }),
+            ClaimRuleViolation rule => ValidationProblem(rule.Errors.GroupBy(error => error.Field)
+                .ToDictionary(group => group.Key, group => group.Select(error => error.Message).ToArray())),
             IdempotencyConflictException conflict => Results.Problem(title: "Idempotency key conflict",
                 detail: conflict.Message, statusCode: StatusCodes.Status409Conflict, type: "IdempotencyConflict"),
+            ClaimConcurrencyException conflict => Results.Problem(title: "Claim update conflict",
+                detail: conflict.Message, statusCode: StatusCodes.Status409Conflict, type: "ClaimConcurrencyConflict"),
             _ => null
         };
 

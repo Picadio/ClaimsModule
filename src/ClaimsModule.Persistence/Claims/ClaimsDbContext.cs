@@ -22,6 +22,7 @@ public sealed class ClaimsDbContext(DbContextOptions<ClaimsDbContext> options, I
         ConfigureRecord<ClaimNumberCounter>(modelBuilder);
         ConfigureRecord<ClaimSubmission>(modelBuilder);
         ConfigureRecord<ClaimAuditEntry>(modelBuilder);
+        ConfigureRecord<ClaimStatusSubmission>(modelBuilder);
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ClaimsDbContext).Assembly);
         ReferenceSeeds.Apply(modelBuilder);

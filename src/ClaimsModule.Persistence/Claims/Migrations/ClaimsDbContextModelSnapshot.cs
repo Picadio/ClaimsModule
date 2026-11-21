@@ -22,6 +22,100 @@ namespace ClaimsModule.Persistence.Claims.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("ClaimsModule.Application.Claims.ClaimTransitionRule", b =>
+                {
+                    b.Property<string>("FromStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ToStatus")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("RequiredPermission")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.HasKey("FromStatus", "ToStatus");
+
+                    b.ToTable("ClaimStatusTransitions", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            FromStatus = "Draft",
+                            ToStatus = "Open",
+                            RequiredPermission = "handler"
+                        },
+                        new
+                        {
+                            FromStatus = "Open",
+                            ToStatus = "UnderInvestigation",
+                            RequiredPermission = "handler"
+                        },
+                        new
+                        {
+                            FromStatus = "Open",
+                            ToStatus = "PendingPayment",
+                            RequiredPermission = "handler"
+                        },
+                        new
+                        {
+                            FromStatus = "Open",
+                            ToStatus = "Closed",
+                            RequiredPermission = "handler"
+                        },
+                        new
+                        {
+                            FromStatus = "Open",
+                            ToStatus = "Withdrawn",
+                            RequiredPermission = "handler"
+                        },
+                        new
+                        {
+                            FromStatus = "UnderInvestigation",
+                            ToStatus = "Open",
+                            RequiredPermission = "handler"
+                        },
+                        new
+                        {
+                            FromStatus = "UnderInvestigation",
+                            ToStatus = "PendingPayment",
+                            RequiredPermission = "handler"
+                        },
+                        new
+                        {
+                            FromStatus = "UnderInvestigation",
+                            ToStatus = "Closed",
+                            RequiredPermission = "handler"
+                        },
+                        new
+                        {
+                            FromStatus = "UnderInvestigation",
+                            ToStatus = "Withdrawn",
+                            RequiredPermission = "handler"
+                        },
+                        new
+                        {
+                            FromStatus = "PendingPayment",
+                            ToStatus = "Closed",
+                            RequiredPermission = "handler"
+                        },
+                        new
+                        {
+                            FromStatus = "Closed",
+                            ToStatus = "Reopened",
+                            RequiredPermission = "supervisor"
+                        },
+                        new
+                        {
+                            FromStatus = "Reopened",
+                            ToStatus = "Open",
+                            RequiredPermission = "system"
+                        });
+                });
+
             modelBuilder.Entity("ClaimsModule.Domain.Claims.Claim", b =>
                 {
                     b.Property<Guid>("Id")
@@ -45,6 +139,14 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                     b.Property<string>("ClientName")
                         .HasMaxLength(255)
                         .HasColumnType("nvarchar(255)");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("ClosureReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasPrecision(7)
@@ -585,8 +687,15 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                     b.Property<Guid>("OrganizationEntityId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("Position")
+                        .HasColumnType("int");
+
                     b.Property<Guid?>("RelatedEntityId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RelatedEntityType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasPrecision(7)
@@ -597,7 +706,8 @@ namespace ClaimsModule.Persistence.Claims.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("OrganizationEntityId", "ClaimId", "CreatedAt");
+                    b.HasIndex("OrganizationEntityId", "ClaimId", "CreatedAt", "Position", "Id")
+                        .IsDescending(false, false, true, true, true);
 
                     b.ToTable("ClaimAuditLog", (string)null);
 
@@ -649,6 +759,66 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                         .IsUnique();
 
                     b.ToTable("ClaimNumberCounters", (string)null);
+                });
+
+            modelBuilder.Entity("ClaimsModule.Persistence.Claims.ClaimStatusSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWSEQUENTIALID()");
+
+                    b.Property<Guid>("ClaimId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("KeyHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<Guid>("OrganizationEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("ResponseJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationEntityId", "ClaimId", "CreatedByUserId", "KeyHash")
+                        .IsUnique();
+
+                    b.ToTable("ClaimStatusSubmissions", (string)null);
                 });
 
             modelBuilder.Entity("ClaimsModule.Persistence.Claims.ClaimSubmission", b =>
@@ -903,6 +1073,16 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                 });
 
             modelBuilder.Entity("ClaimsModule.Persistence.Claims.ClaimAuditEntry", b =>
+                {
+                    b.HasOne("ClaimsModule.Domain.Claims.Claim", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationEntityId", "ClaimId")
+                        .HasPrincipalKey("OrganizationEntityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClaimsModule.Persistence.Claims.ClaimStatusSubmission", b =>
                 {
                     b.HasOne("ClaimsModule.Domain.Claims.Claim", null)
                         .WithMany()

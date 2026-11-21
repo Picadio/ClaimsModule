@@ -19,11 +19,7 @@ public sealed record StoredClaimSubmission(Guid UserId, string KeyHash, string R
 public interface IClaimUnitOfWork
 {
     Task<T> ExecuteIntakeAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken);
+    Task<T> ExecuteClaimWriteAsync<T>(Guid claimId, Func<CancellationToken, Task<T>> work,
+        CancellationToken cancellationToken);
     Task SaveAsync(CancellationToken cancellationToken);
-}
-
-public interface IClaimAuditLog
-{
-    void Append(Claim claim, Guid correlationId, string eventType, string description, string? newValues,
-        Guid? relatedEntityId = null);
 }

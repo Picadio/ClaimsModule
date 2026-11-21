@@ -16,6 +16,8 @@ public sealed class Claim : OrganizationRecord
     public string? PolicyNumber { get; private set; }
     public string? ClientName { get; private set; }
     public Guid? AssignedHandlerId { get; private set; }
+    public DateTimeOffset? ClosedAt { get; private set; }
+    public string? ClosureReason { get; private set; }
     public LossEvent LossEvent { get; private set; } = null!;
     public IReadOnlyList<ClaimParty> Parties => parties.AsReadOnly();
     public IReadOnlyList<ClaimRiskObject> RiskObjects => riskObjects.AsReadOnly();
@@ -49,7 +51,7 @@ public sealed class Claim : OrganizationRecord
             var lossDate = DateOnly.FromDateTime(LossEvent.LossDate.UtcDateTime);
             if (lossDate < policy.EffectiveDate || lossDate > policy.ExpirationDate)
             {
-                AddWarning("LOSS_OUTSIDE_POLICY_PERIOD", "LossEvent.LossDate",
+                AddWarning(ClaimWarning.OutsidePolicyPeriod, "LossEvent.LossDate",
                     "The loss date is outside the policy's effective period.");
             }
         }
@@ -64,19 +66,11 @@ public sealed class Claim : OrganizationRecord
         FnolDetails details, LinkedPolicy? policy, bool causeOfLossIsActive)
     {
         var loss = details.LossEvent;
-        if (loss.LossDate == default || loss.LossDate > reportedAt)
+        var issue = GetLossIssues(loss.LossDate, loss.LossDescription, loss.CauseOfLossCode, causeOfLossIsActive,
+            reportedAt).FirstOrDefault();
+        if (issue is not null)
         {
-            throw new ClaimRuleViolation("LossEvent.LossDate", "The loss date is required and cannot be in the future.");
-        }
-
-        if (loss.LossDescription.Trim().Length < FnolRules.MinLossDescriptionLength)
-        {
-            throw new ClaimRuleViolation("LossEvent.LossDescription", "The loss description must contain at least 20 characters.");
-        }
-
-        if (!causeOfLossIsActive || string.IsNullOrWhiteSpace(loss.CauseOfLossCode))
-        {
-            throw new ClaimRuleViolation("LossEvent.CauseOfLossCode", "The cause of loss must be active for this organization.");
+            throw new ClaimRuleViolation(issue.Field, issue.Message);
         }
 
         if (!details.Parties.Any(party => party.Role == ClaimPartyRole.Claimant))
@@ -85,6 +79,132 @@ public sealed class Claim : OrganizationRecord
         }
 
         return new Claim(organizationId, actorId, reportedAt, sequence, details, policy);
+    }
+
+    public ClaimStatusChange ChangeStatus(ClaimStatus target, ClaimTransitionDetails details,
+        ClaimLifecycleFacts facts, Guid actorId, DateTimeOffset occurredAt)
+    {
+        var previousStatus = Status;
+        var previousHandlerId = AssignedHandlerId;
+        var opensDraft = Status == ClaimStatus.Draft && target == ClaimStatus.Open;
+        var reachesOpen = target is ClaimStatus.Open or ClaimStatus.Reopened;
+        var reason = string.IsNullOrWhiteSpace(details.Reason) ? null : details.Reason.Trim();
+        var handlerId = details.AssignedHandlerId ?? AssignedHandlerId;
+        var policyWarning = opensDraft
+            ? warnings.FirstOrDefault(warning => warning.Code == ClaimWarning.OutsidePolicyPeriod)
+            : null;
+
+        if (Status == target || (Status == ClaimStatus.Draft && target == ClaimStatus.Closed))
+        {
+            throw new ClaimRuleViolation("TargetStatus", $"The transition from {Status} to {target} is not allowed.");
+        }
+
+        var issues = new List<ClaimRuleError>();
+        if (details.AssignedHandlerId.HasValue && !opensDraft)
+        {
+            issues.Add(new("AssignedHandlerId", "A handler can be assigned when opening a draft."));
+        }
+
+        if (reachesOpen || target == ClaimStatus.Closed)
+        {
+            issues.AddRange(GetCriticalIssues(facts.CauseOfLossIsActive, occurredAt));
+        }
+
+        if (reachesOpen && (handlerId is null || handlerId == Guid.Empty))
+        {
+            issues.Add(new("AssignedHandlerId", "Assign a handler before opening the claim."));
+        }
+
+        if (policyWarning is not null && !details.AcknowledgePolicyPeriodWarning)
+        {
+            issues.Add(new("AcknowledgePolicyPeriodWarning", "Acknowledge the loss date warning before opening the claim."));
+        }
+
+        if (target == ClaimStatus.PendingPayment)
+        {
+            if (!facts.Reserves.HasApprovedReserve)
+            {
+                issues.Add(new("TargetStatus", "At least one approved reserve is required."));
+            }
+
+            if (Status == ClaimStatus.UnderInvestigation && !details.LiabilityDetermined)
+            {
+                issues.Add(new("LiabilityDetermined", "Determine liability before moving to PendingPayment."));
+            }
+        }
+
+        if (target == ClaimStatus.Closed)
+        {
+            if (facts.Reserves.HasPendingApproval)
+            {
+                issues.Add(new("TargetStatus", "Resolve pending reserve approvals before closing the claim."));
+            }
+
+            if (facts.Reserves.HasPositiveComponentBalance && (!details.ConfirmPositiveReserveBalance || reason is null))
+            {
+                issues.Add(new("ConfirmPositiveReserveBalance",
+                    "Confirm the positive reserve balance and enter a reason before closing the claim."));
+            }
+        }
+
+        if (target is ClaimStatus.Reopened or ClaimStatus.Withdrawn && reason is null)
+        {
+            issues.Add(new("Reason", $"A reason is required for {target}."));
+        }
+
+        if (issues.Count > 0)
+        {
+            throw new ClaimRuleViolation(issues);
+        }
+
+        Status = target == ClaimStatus.Reopened ? ClaimStatus.Open : target;
+        AssignedHandlerId = handlerId;
+        ClosedAt = target == ClaimStatus.Closed ? occurredAt.ToUniversalTime() : null;
+        ClosureReason = target == ClaimStatus.Closed ? reason : null;
+        MarkUpdated(actorId, occurredAt);
+
+        return new ClaimStatusChange(previousStatus, target, Status, previousHandlerId, reason, policyWarning,
+            target == ClaimStatus.Closed && facts.Reserves.HasPositiveComponentBalance,
+            target == ClaimStatus.PendingPayment && previousStatus == ClaimStatus.UnderInvestigation);
+    }
+
+    private IEnumerable<ClaimRuleError> GetCriticalIssues(bool causeOfLossIsActive, DateTimeOffset occurredAt)
+    {
+        if (LossEvent is null)
+        {
+            yield return new("LossEvent", "The claim must have a loss event.");
+        }
+        else
+        {
+            foreach (var issue in GetLossIssues(LossEvent.LossDate, LossEvent.LossDescription, LossEvent.CauseOfLossCode,
+                causeOfLossIsActive, occurredAt))
+            {
+                yield return issue;
+            }
+        }
+        if (!parties.Any(party => party.Role == ClaimPartyRole.Claimant && party.IsActive && !party.IsDeleted))
+        {
+            yield return new("Parties", "At least one active claimant is required.");
+        }
+    }
+
+    private static IEnumerable<ClaimRuleError> GetLossIssues(DateTimeOffset lossDate, string? description, string causeOfLossCode,
+        bool causeOfLossIsActive, DateTimeOffset now)
+    {
+        if (lossDate == default || lossDate > now)
+        {
+            yield return new("LossEvent.LossDate", "The loss date is required and cannot be in the future.");
+        }
+
+        if (description is null || description.Trim().Length < FnolRules.MinLossDescriptionLength)
+        {
+            yield return new("LossEvent.LossDescription", "The loss description must contain at least 20 characters.");
+        }
+
+        if (!causeOfLossIsActive || string.IsNullOrWhiteSpace(causeOfLossCode))
+        {
+            yield return new("LossEvent.CauseOfLossCode", "The cause of loss must be active for this organization.");
+        }
     }
 
     private void AddWarning(string code, string field, string message) =>
