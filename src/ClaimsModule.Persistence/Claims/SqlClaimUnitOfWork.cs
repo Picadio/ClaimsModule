@@ -1,3 +1,4 @@
+using System.Data;
 using ClaimsModule.Application.Claims;
 using ClaimsModule.Application.Exceptions;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +14,10 @@ internal sealed class SqlClaimUnitOfWork(ClaimsDbContext db) : IClaimUnitOfWork
         CancellationToken cancellationToken) =>
         ExecuteAsync($"ClaimsModule:Claim:{db.OrganizationId:D}:{claimId:D}", work, cancellationToken);
 
+    public Task<T> ExecuteClaimJobAsync<T>(Guid claimId, Func<CancellationToken, Task<T>> work,
+        CancellationToken cancellationToken) =>
+        ExecuteAsync($"ClaimsModule:Claim:{db.OrganizationId:D}:{claimId:D}", work, cancellationToken, IsolationLevel.RepeatableRead);
+
     public async Task SaveAsync(CancellationToken cancellationToken)
     {
         try
@@ -26,9 +31,9 @@ internal sealed class SqlClaimUnitOfWork(ClaimsDbContext db) : IClaimUnitOfWork
     }
 
     private async Task<T> ExecuteAsync<T>(string lockResource, Func<CancellationToken, Task<T>> work,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, IsolationLevel isolation = IsolationLevel.ReadCommitted)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(isolation, cancellationToken);
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             DECLARE @status int;
             EXEC @status = sys.sp_getapplock @Resource = {lockResource},

@@ -1,5 +1,6 @@
 using ClaimsModule.Application.Claims;
 using ClaimsModule.Application.Reserves;
+using ClaimsModule.Application.Security;
 using ClaimsModule.Application.Validation;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,6 +14,7 @@ public static class DependencyInjection
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<ReserveWriter>();
         services.AddScoped<ReserveReplays>();
+        services.AddScoped<BackgroundTenant>();
         services.AddMediatR(options =>
         {
             options.RegisterServicesFromAssemblyContaining<CreateClaimCommand>();

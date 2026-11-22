@@ -114,6 +114,37 @@ The component balance and sequence update in the same transaction as history,
 audit and request replay. Reserve writes share the lifecycle claim lock. The
 ledger reads balances and history in one short serializable transaction.
 
-Each history row has a durable posting key derived from its reserve ID and
-change sequence. A future GL dispatcher will select only approved rows with
-pending posting. GL execution is the next implementation stage.
+## GL posting simulation
+
+An auto-approved or manually approved reserve with pending posting is a
+durable dispatch record. This includes an automatically approved initial FNOL
+reserve. The API attempts to enqueue after its database transaction commits.
+The recovery service checks one page of approved pending rows per minute
+in each configured organization, starting at startup. Each organization
+has its own cursor and each sweep has a fixed upper ID, so newly submitted
+work cannot indefinitely delay a revisit. Recovery handles missing dispatches
+and terminal Hangfire failures. Previously approved pending reserves are
+eligible.
+
+Hangfire executes the posting with its automatic retry policy. A claim write
+lock serializes assignment and execution. A worker must match the saved
+Hangfire job ID and the business key `Reserve:{ReserveId}:Change:{ChangeSequence}`.
+The status and audit row commit together. Duplicate or obsolete jobs cannot
+write a second posting. A positive delta debits Change in Outstanding Reserves
+and credits Outstanding Loss Reserves. A negative delta swaps the accounts and
+records the absolute amount.
+
+When Hangfire reaches terminal failure, recovery sets `Failed` and records
+`GL_POSTING_FAILED`. An authenticated user can call
+`POST /api/claims/{id}/reserves/{txnId}/retry-posting` on a failed approved
+transaction. The retry retains the business key and gets a new Hangfire job
+ID. The workflow carries the approval or retry correlation ID into the audit
+and leaves the approved balance and claim activity timestamp unchanged.
+
+Jobs run when `ConnectionStrings__Claims` is configured. Set
+`Jobs__Enabled=false` to disable the worker. Hangfire uses the claims database
+by default and can use `ConnectionStrings__Hangfire` for its own SQL storage.
+Its SQL login needs permission to initialize the Hangfire schema. Configure
+`Jobs__OrganizationEntityIds__0` and additional indexed values for each
+organization that needs recovery. The demo organization is the default.
+Keep the API host running for background processing. [Hangfire SQL storage](https://docs.hangfire.io/en/latest/configuration/using-sql-server.html)

@@ -596,6 +596,9 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                     b.Property<Guid>("OrganizationEntityId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("PostingCorrelationId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("PostingJobId")
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
@@ -655,6 +658,8 @@ namespace ClaimsModule.Persistence.Claims.Migrations
 
                     b.HasIndex("OrganizationEntityId", "PostingKey")
                         .IsUnique();
+
+                    b.HasIndex("OrganizationEntityId", "PostingStatus", "Id");
 
                     b.HasIndex("OrganizationEntityId", "ClaimId", "ReserveId", "ChangeSequence")
                         .IsUnique();

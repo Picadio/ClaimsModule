@@ -13,6 +13,9 @@ public interface IReserveStore
     Task<bool> IsComponentArchivedAsync(Guid claimId, ReserveComponentType component, CancellationToken cancellationToken);
     Task<bool> HasPendingAddAsync(Guid claimId, Guid reserveId, CancellationToken cancellationToken);
     Task<decimal> SumApprovedAsync(Guid claimId, CancellationToken cancellationToken);
+    Task<Guid?> FindLastPendingPostingIdAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<ReservePostingCandidate>> ListPendingPostingsAsync(Guid? afterId, int pageSize, Guid? throughId,
+        CancellationToken cancellationToken);
     Task<IReadOnlyList<ReserveBalance>> ReadBalancesAsync(Guid claimId, CancellationToken cancellationToken);
     Task<ReserveLedgerData?> ReadLedgerAsync(Guid claimId, CancellationToken cancellationToken);
     Task<StoredReserveSubmission?> FindSubmissionAsync(Guid claimId, Guid actorId, string keyHash,

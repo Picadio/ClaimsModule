@@ -31,11 +31,13 @@ internal sealed class SubmitReserveValidator : AbstractValidator<SubmitReserveCo
 }
 
 internal sealed class SubmitReserveHandler(IReserveStore reserves, IClaimStore claims, IClaimUnitOfWork unitOfWork,
-    ICurrentUser currentUser, TimeProvider clock, ReserveWriter writer, ReserveReplays replays)
+    ICurrentUser currentUser, TimeProvider clock, ReserveWriter writer, ReserveReplays replays, IPublisher publisher)
     : IRequestHandler<SubmitReserveCommand, ReserveTransaction?>
 {
-    public Task<ReserveTransaction?> Handle(SubmitReserveCommand command, CancellationToken cancellationToken) =>
-        unitOfWork.ExecuteClaimWriteAsync<ReserveTransaction?>(command.ClaimId, async token =>
+    public async Task<ReserveTransaction?> Handle(SubmitReserveCommand command, CancellationToken cancellationToken)
+    {
+        var user = currentUser.Identity;
+        var transaction = await unitOfWork.ExecuteClaimWriteAsync<ReserveTransaction?>(command.ClaimId, async token =>
         {
             var claim = await reserves.FindClaimForUpdateAsync(command.ClaimId, token);
             if (claim is null)
@@ -55,7 +57,6 @@ internal sealed class SubmitReserveHandler(IReserveStore reserves, IClaimStore c
                 throw new ClaimRuleViolation("Component", "This claim already has an archived reserve of this type.");
             }
 
-            var user = currentUser.Identity;
             var key = ReserveReplayKey.Create(command.IdempotencyKey, new { command.ReserveId, request });
             if (await replays.ReadAsync<ReserveTransaction>(claim.Id, user.UserId, key, token) is { } prior)
             {
@@ -92,4 +93,9 @@ internal sealed class SubmitReserveHandler(IReserveStore reserves, IClaimStore c
             await unitOfWork.SaveAsync(token);
             return result;
         }, cancellationToken);
+
+        await ReservePostingReady.RequestAsync(publisher, user.OrganizationEntityId, command.ClaimId, transaction,
+            cancellationToken);
+        return transaction;
+    }
 }

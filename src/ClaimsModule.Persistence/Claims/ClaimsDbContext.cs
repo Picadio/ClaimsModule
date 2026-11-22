@@ -6,10 +6,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClaimsModule.Persistence.Claims;
 
-public sealed class ClaimsDbContext(DbContextOptions<ClaimsDbContext> options, ICurrentUser? currentUser = null)
+public sealed class ClaimsDbContext(DbContextOptions<ClaimsDbContext> options, ICurrentUser? currentUser = null,
+    BackgroundTenant? backgroundTenant = null)
     : DbContext(options)
 {
-    internal Guid OrganizationId => currentUser?.Identity.OrganizationEntityId ?? Guid.Empty;
+    internal Guid OrganizationId => backgroundTenant?.OrganizationId ?? currentUser?.Identity.OrganizationEntityId ?? Guid.Empty;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -30,6 +30,7 @@ internal sealed class ReserveWriter(IReserveStore store, IClaimUnitOfWork unitOf
             await store.HasPendingAddAsync(claim.Id, component.Id, cancellationToken);
         var entry = component.Submit(change, currentTotal, hasPendingAdd, actorId, occurredAt,
             claim.ReserveLimitOverrideEnabled, replaces);
+        entry.CapturePostingCorrelation(correlationId);
         store.AddHistory(entry);
         await unitOfWork.SaveAsync(cancellationToken);
 

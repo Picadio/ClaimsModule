@@ -18,6 +18,7 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
     private readonly string? claimsConnection;
     private readonly bool openApiEnabled;
     private readonly bool allowDirectClosure;
+    private readonly bool glJobsEnabled;
     private readonly Dictionary<string, DemoAccount> accounts =
         new[] { UserRoles.Handler, UserRoles.Supervisor, UserRoles.Manager }
             .ToDictionary(role => role, _ => new DemoAccount(Guid.NewGuid(), RandomSecret()));
@@ -31,13 +32,14 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
 
     internal ClaimsApiFactory(bool demoEnabled, string? environment = null,
         string? claimsConnection = null, Guid? organizationId = null, bool openApiEnabled = false,
-        bool allowDirectClosure = false)
+        bool allowDirectClosure = false, bool glJobsEnabled = false)
     {
         this.demoEnabled = demoEnabled;
         this.environment = environment ?? Environments.Development;
         this.claimsConnection = claimsConnection;
         this.openApiEnabled = openApiEnabled;
         this.allowDirectClosure = allowDirectClosure;
+        this.glJobsEnabled = glJobsEnabled;
         OrganizationId = organizationId ?? Guid.NewGuid();
     }
 
@@ -59,6 +61,7 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
             ["Authentication:Demo:Enabled"] = demoEnabled.ToString(),
             ["Authentication:Demo:OrganizationEntityId"] = OrganizationId.ToString("D"),
             ["OpenApi:Enabled"] = openApiEnabled.ToString(),
+            ["Jobs:Enabled"] = glJobsEnabled.ToString(),
             ["Claims:AllowDirectClosure"] = allowDirectClosure.ToString()
         };
         foreach (var (role, account) in accounts)

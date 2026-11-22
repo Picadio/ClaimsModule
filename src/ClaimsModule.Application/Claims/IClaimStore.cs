@@ -21,5 +21,7 @@ public interface IClaimUnitOfWork
     Task<T> ExecuteIntakeAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken);
     Task<T> ExecuteClaimWriteAsync<T>(Guid claimId, Func<CancellationToken, Task<T>> work,
         CancellationToken cancellationToken);
+    Task<T> ExecuteClaimJobAsync<T>(Guid claimId, Func<CancellationToken, Task<T>> work,
+        CancellationToken cancellationToken);
     Task SaveAsync(CancellationToken cancellationToken);
 }

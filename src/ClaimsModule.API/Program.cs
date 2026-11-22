@@ -5,6 +5,7 @@ using ClaimsModule.API.OpenApi;
 using ClaimsModule.API.Security;
 using ClaimsModule.Application;
 using ClaimsModule.Application.Claims;
+using ClaimsModule.Infrastructure.Jobs;
 using ClaimsModule.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -15,7 +16,19 @@ builder.Services.AddOpenApi(OpenApiConfiguration.AddBearerSupport);
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ClaimExceptionHandler>();
 builder.Services.AddClaimsApplication();
-builder.Services.AddClaimsPersistence(builder.Configuration.GetConnectionString("Claims"));
+var claimsConnection = builder.Configuration.GetConnectionString("Claims");
+builder.Services.AddClaimsPersistence(claimsConnection);
+if (builder.Configuration.GetValue("Jobs:Enabled", !string.IsNullOrWhiteSpace(claimsConnection)))
+{
+    if (string.IsNullOrWhiteSpace(claimsConnection))
+    {
+        throw new InvalidOperationException("GL posting jobs require a claims SQL connection.");
+    }
+
+    var organizations = builder.Configuration.GetSection("Jobs:OrganizationEntityIds").Get<Guid[]>()
+        ?? [builder.Configuration.GetValue<Guid>("Authentication:Demo:OrganizationEntityId")];
+    builder.Services.AddReservePostingJobs(builder.Configuration.GetConnectionString("Hangfire") ?? claimsConnection, organizations);
+}
 builder.Services.AddSingleton(new ClaimLifecycleOptions(builder.Configuration.GetValue<bool>("Claims:AllowDirectClosure")));
 builder.Services.AddSingleton<IClaimHandlerDirectory, DemoClaimHandlerDirectory>();
 builder.AddClaimsAuthentication();

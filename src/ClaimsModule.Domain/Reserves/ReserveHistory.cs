@@ -25,6 +25,10 @@ public sealed class ReserveHistory : OrganizationRecord
     public ReservePostingStatus PostingStatus { get; private set; }
     public string PostingKey { get; private set; } = null!;
     public string? PostingJobId { get; private set; }
+    public Guid? PostingCorrelationId { get; private set; }
+    public bool IsPendingPosting => PostingStatus == ReservePostingStatus.Pending && IsApprovedForPosting;
+
+    private bool IsApprovedForPosting => ApprovalStatus is ReserveApprovalStatus.AutoApproved or ReserveApprovalStatus.Approved;
 
     private ReserveHistory()
     {
@@ -82,6 +86,49 @@ public sealed class ReserveHistory : OrganizationRecord
         ApprovalStatus = ReserveApprovalStatus.Cancelled;
         PostingStatus = ReservePostingStatus.Cancelled;
         MarkUpdated(actorId, occurredAt);
+    }
+
+    public void CapturePostingCorrelation(Guid correlationId)
+    {
+        if (IsPendingPosting && PostingJobId is null)
+        {
+            PostingCorrelationId = correlationId;
+        }
+    }
+
+    public void AssignPostingJob(string jobId, Guid fallbackCorrelationId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(jobId);
+        if (!IsPendingPosting || PostingJobId is not null)
+        {
+            throw new InvalidOperationException("The reserve does not have an unassigned pending posting.");
+        }
+
+        PostingJobId = jobId;
+        PostingCorrelationId ??= fallbackCorrelationId;
+    }
+
+    public bool TryFinishPosting(string jobId, string postingKey, bool succeeded)
+    {
+        if (!IsPendingPosting || PostingJobId is null || PostingJobId != jobId || PostingKey != postingKey)
+        {
+            return false;
+        }
+
+        PostingStatus = succeeded ? ReservePostingStatus.Posted : ReservePostingStatus.Failed;
+        return true;
+    }
+
+    public void RetryPosting(Guid correlationId)
+    {
+        if (!IsApprovedForPosting || PostingStatus != ReservePostingStatus.Failed)
+        {
+            throw new ClaimRuleViolation("PostingStatus", "Only failed postings on approved reserve transactions can be retried.");
+        }
+
+        PostingStatus = ReservePostingStatus.Pending;
+        PostingJobId = null;
+        PostingCorrelationId = correlationId;
     }
 
     internal void EnsureCanApprove(ReserveApprovalAuthority authority, Guid actorId)

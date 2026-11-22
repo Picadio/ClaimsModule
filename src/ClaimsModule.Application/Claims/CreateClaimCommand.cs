@@ -15,10 +15,11 @@ internal sealed class CreateClaimHandler(IClaimStore store, IClaimUnitOfWork uni
     TimeProvider clock, IPublisher publisher, IMapper mapper, ReserveWriter reserveWriter)
     : IRequestHandler<CreateClaimCommand, CreatedClaim>
 {
-    public Task<CreatedClaim> Handle(CreateClaimCommand command, CancellationToken cancellationToken) =>
-        unitOfWork.ExecuteIntakeAsync(async token =>
+    public async Task<CreatedClaim> Handle(CreateClaimCommand command, CancellationToken cancellationToken)
+    {
+        var user = currentUser.Identity;
+        var createdClaim = await unitOfWork.ExecuteIntakeAsync(async token =>
         {
-            var user = currentUser.Identity;
             var request = command.Request;
             var keyHash = IdempotencyFingerprint.HashKey(command.IdempotencyKey);
             var requestHash = keyHash is null ? null : IdempotencyFingerprint.HashRequest(request);
@@ -57,6 +58,11 @@ internal sealed class CreateClaimHandler(IClaimStore store, IClaimUnitOfWork uni
             await unitOfWork.SaveAsync(token);
             return response;
         }, cancellationToken);
+
+        await ReservePostingReady.RequestAsync(publisher, user.OrganizationEntityId, createdClaim.Id,
+            createdClaim.InitialReserve, cancellationToken);
+        return createdClaim;
+    }
 }
 
 internal sealed record ClaimCreatedNotification(Claim Claim, ClaimCreated Event, Guid CorrelationId) : INotification;

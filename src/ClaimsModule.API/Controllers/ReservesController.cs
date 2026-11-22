@@ -92,6 +92,19 @@ public sealed class ReservesController(ISender sender) : ControllerBase
         return result is null ? NotFound() : Ok(result);
     }
 
+    [HttpPost("{txnId:guid}/retry-posting")]
+    [ProducesResponseType<ReserveTransaction>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ReserveTransaction>> RetryPosting(Guid id, Guid txnId,
+        [FromHeader(Name = "Idempotency-Key")] string? idempotencyKey, CancellationToken cancellationToken)
+    {
+        var result = await sender.Send(new RetryReservePostingCommand(id, txnId, idempotencyKey,
+            RequestCorrelation.Read(HttpContext)), cancellationToken);
+        return result is null ? NotFound() : Ok(result);
+    }
+
     private async Task<ActionResult<ReserveTransaction>> Resolve(Guid id, Guid txnId, ReserveDecision decision,
         string? reason, string? idempotencyKey, CancellationToken cancellationToken)
     {

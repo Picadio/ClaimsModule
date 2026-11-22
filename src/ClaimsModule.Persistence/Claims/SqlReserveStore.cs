@@ -45,6 +45,28 @@ internal sealed class SqlReserveStore(ClaimsDbContext db) : IReserveStore
         db.Set<ClaimReserveComponent>().Where(component => component.ClaimId == claimId)
             .SumAsync(component => component.CurrentAmount, cancellationToken);
 
+    public Task<Guid?> FindLastPendingPostingIdAsync(CancellationToken cancellationToken) => PendingPostings()
+        .OrderByDescending(entry => entry.Id).Select(entry => (Guid?)entry.Id).FirstOrDefaultAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ReservePostingCandidate>> ListPendingPostingsAsync(Guid? afterId, int pageSize, Guid? throughId,
+        CancellationToken cancellationToken)
+    {
+        var pending = PendingPostings();
+        if (afterId is Guid cursor)
+        {
+            pending = pending.Where(entry => entry.Id.CompareTo(cursor) > 0);
+        }
+
+        if (throughId is Guid limit)
+        {
+            pending = pending.Where(entry => entry.Id.CompareTo(limit) <= 0);
+        }
+
+        return await pending.OrderBy(entry => entry.Id).Take(pageSize)
+            .Select(entry => new ReservePostingCandidate(new ReservePostingTarget(entry.OrganizationEntityId, entry.ClaimId,
+                entry.Id, entry.PostingKey), entry.PostingJobId)).ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<ReserveBalance>> ReadBalancesAsync(Guid claimId, CancellationToken cancellationToken) =>
         await db.Set<ClaimReserveComponent>()
             .Where(component => component.ClaimId == claimId && db.Set<Claim>().Any(claim => claim.Id == component.ClaimId))
@@ -90,4 +112,10 @@ internal sealed class SqlReserveStore(ClaimsDbContext db) : IReserveStore
     public void AddSubmission(StoredReserveSubmission submission) => db.Add(new ReserveSubmission(db.OrganizationId,
         submission.ActorId, submission.OccurredAt, submission.ClaimId, submission.KeyHash, submission.RequestHash,
         submission.ResponseJson));
+
+    private IQueryable<ReserveHistory> PendingPostings() => db.Set<ReserveHistory>()
+        .Where(entry => entry.PostingStatus == ReservePostingStatus.Pending &&
+            (entry.ApprovalStatus == ReserveApprovalStatus.Approved || entry.ApprovalStatus == ReserveApprovalStatus.AutoApproved) &&
+            db.Set<Claim>().Any(claim => claim.Id == entry.ClaimId) &&
+            db.Set<ClaimReserveComponent>().Any(component => component.Id == entry.ReserveId && component.ClaimId == entry.ClaimId));
 }

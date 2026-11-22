@@ -28,8 +28,10 @@ internal sealed class ResolveReserveHandler(IReserveStore reserves, IClaimStore 
     ICurrentUser currentUser, TimeProvider clock, ReserveReplays replays, IPublisher publisher)
     : IRequestHandler<ResolveReserveCommand, ReserveTransaction?>
 {
-    public Task<ReserveTransaction?> Handle(ResolveReserveCommand command, CancellationToken cancellationToken) =>
-        unitOfWork.ExecuteClaimWriteAsync<ReserveTransaction?>(command.ClaimId, async token =>
+    public async Task<ReserveTransaction?> Handle(ResolveReserveCommand command, CancellationToken cancellationToken)
+    {
+        var user = currentUser.Identity;
+        var transaction = await unitOfWork.ExecuteClaimWriteAsync<ReserveTransaction?>(command.ClaimId, async token =>
         {
             var claim = await reserves.FindClaimForUpdateAsync(command.ClaimId, token);
             if (claim is null ||
@@ -39,7 +41,6 @@ internal sealed class ResolveReserveHandler(IReserveStore reserves, IClaimStore 
                 return null;
             }
 
-            var user = currentUser.Identity;
             var key = ReserveReplayKey.Create(command.IdempotencyKey,
                 new { command.TransactionId, command.Decision, command.RejectionReason });
             if (await replays.ReadAsync<ReserveTransaction>(claim.Id, user.UserId, key, token) is { } prior)
@@ -69,6 +70,7 @@ internal sealed class ResolveReserveHandler(IReserveStore reserves, IClaimStore 
 
                     var total = await reserves.SumApprovedAsync(claim.Id, token);
                     component.Approve(entry, authority, total, claim.ReserveLimitOverrideEnabled, user.UserId, now);
+                    entry.CapturePostingCorrelation(command.CorrelationId);
                     break;
                 case ReserveDecision.Reject:
                     entry.Reject(authority, user.UserId, now, command.RejectionReason);
@@ -87,6 +89,11 @@ internal sealed class ResolveReserveHandler(IReserveStore reserves, IClaimStore 
             await unitOfWork.SaveAsync(token);
             return result;
         }, cancellationToken);
+
+        await ReservePostingReady.RequestAsync(publisher, user.OrganizationEntityId, command.ClaimId, transaction,
+            cancellationToken);
+        return transaction;
+    }
 }
 
 internal sealed record ReserveResolved(Guid OrganizationId, Guid ClaimId, Guid ActorId, DateTimeOffset OccurredAt,
