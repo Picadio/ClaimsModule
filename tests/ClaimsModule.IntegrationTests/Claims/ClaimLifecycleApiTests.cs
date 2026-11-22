@@ -4,8 +4,10 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ClaimsModule.Application.Claims;
 using ClaimsModule.Application.Reference;
+using ClaimsModule.Application.Reserves;
 using ClaimsModule.Application.Security;
 using ClaimsModule.Domain.Claims;
+using ClaimsModule.Domain.Reserves;
 using ClaimsModule.IntegrationTests.Security;
 using ClaimsModule.Persistence.Claims;
 using Microsoft.Data.SqlClient;
@@ -27,6 +29,7 @@ public sealed class ClaimLifecycleApiTests(ClaimsApiFactory factory) : IClassFix
     [Theory]
     [InlineData(ClaimPath + "/status", "PUT")]
     [InlineData(ClaimPath + "/audit", "GET")]
+    [InlineData(ClaimPath + "/closure-check", "GET")]
     [InlineData(ReferencePath, "GET")]
     public async Task LifecycleEndpointsRequireAuthentication(string path, string method)
     {
@@ -86,6 +89,11 @@ public sealed class ClaimLifecycleApiTests(ClaimsApiFactory factory) : IClassFix
             var path = await CreateDraft(handler, FnolApiTests.ValidRequest() with { PolicyId = expiredPolicy });
             var invalidTransition = await RejectedStatus(handler, path, new(ClaimStatus.Closed), "TargetStatus");
             Assert.Contains("Available next statuses are Open.", invalidTransition.GetProperty("TargetStatus")[0].GetString());
+            var draftCheck = await ReadClosureCheck(handler, path);
+            Assert.False(draftCheck.TransitionAllowed);
+            Assert.False(draftCheck.CanClose);
+            Assert.Equal(invalidTransition.GetProperty("TargetStatus")[0].GetString(),
+                Assert.Single(draftCheck.Blockers["TargetStatus"]));
             await RejectedStatus(handler, path, new(ClaimStatus.Open), "AssignedHandlerId");
             await RejectedStatus(handler, path, new(ClaimStatus.Open, AssignedHandlerId: Guid.NewGuid()),
                 "AssignedHandlerId");
@@ -101,6 +109,7 @@ public sealed class ClaimLifecycleApiTests(ClaimsApiFactory factory) : IClassFix
             Assert.Equal(new[] { "STATUS_CHANGED", "VALIDATION_WARNING_ACKNOWLEDGED", "HANDLER_ASSIGNED" },
                 afterOpen.Items.Where(item => item.CorrelationId == opened.CorrelationId).Select(item => item.EventType));
             await RejectedStatus(handler, path, new(ClaimStatus.Closed), "TargetStatus");
+            Assert.False((await ReadClosureCheck(handler, path)).TransitionAllowed);
             await RejectedStatus(handler, path, new(ClaimStatus.PendingPayment), "TargetStatus");
             await Change(handler, path, new(ClaimStatus.UnderInvestigation));
             await RejectedStatus(handler, path, new(ClaimStatus.Withdrawn), "Reason");
@@ -153,6 +162,8 @@ public sealed class ClaimLifecycleApiTests(ClaimsApiFactory factory) : IClassFix
                 $"UPDATE dbo.Claims SET IsDeleted = 1 WHERE Id = {replies[0].Result.Id}");
             using var deletedAudit = await handler.GetAsync(path + "/audit");
             Assert.Equal(HttpStatusCode.NotFound, deletedAudit.StatusCode);
+            using var deletedCheck = await handler.GetAsync(path + "/closure-check");
+            Assert.Equal(HttpStatusCode.NotFound, deletedCheck.StatusCode);
             using var deletedReplay = await PutStatus(supervisor, path, reopen, "reopen");
             Assert.Equal(HttpStatusCode.NotFound, deletedReplay.StatusCode);
         }
@@ -180,9 +191,22 @@ public sealed class ClaimLifecycleApiTests(ClaimsApiFactory factory) : IClassFix
             using var supervisor = api.CreateApiClient();
             await FnolApiTests.Authenticate(handler, api);
             await FnolApiTests.Authenticate(supervisor, api, UserRoles.Supervisor);
-            var path = await CreateDraft(handler, FnolApiTests.ValidRequest());
-            await Change(handler, path, new(ClaimStatus.Open, AssignedHandlerId: api.Account(UserRoles.Handler).UserId), "shared-key");
-            var closed = await Change(supervisor, path, new(ClaimStatus.Closed), "shared-key");
+            var path = await CreateDraft(handler, FnolApiTests.ValidRequest() with
+            {
+                PolicyId = Guid.Parse("1a46cfff-f909-44dc-ad15-000000000001"),
+                InitialReserve = new InitialReserveRequest(ReserveComponentType.Indemnity, 1_000m)
+            });
+            var opened = await Change(handler, path,
+                new(ClaimStatus.Open, AssignedHandlerId: api.Account(UserRoles.Handler).UserId), "shared-key");
+            await VerifyClaimLockModes(api.Services, opened.Result.Id);
+            var check = await ReadClosureCheck(supervisor, path);
+            Assert.True(check.TransitionAllowed);
+            Assert.True(check.CanClose);
+            Assert.True(check.RequiresPositiveReserveConfirmation);
+            Assert.Empty(check.Blockers);
+            await RejectedStatus(supervisor, path, new(ClaimStatus.Closed), "ConfirmPositiveReserveBalance");
+            var closed = await Change(supervisor, path,
+                new(ClaimStatus.Closed, "Positive balance acknowledged", ConfirmPositiveReserveBalance: true), "shared-key");
             Assert.Equal(ClaimStatus.Closed, closed.Result.Status);
             Assert.Contains((await ReadAudit(handler, path)).Items, item => item.EventType == "CLAIM_CLOSED" &&
                 item.CorrelationId == closed.CorrelationId);
@@ -191,6 +215,22 @@ public sealed class ClaimLifecycleApiTests(ClaimsApiFactory factory) : IClassFix
         {
             await db.Database.EnsureDeletedAsync();
         }
+    }
+
+    private static async Task VerifyClaimLockModes(IServiceProvider services, Guid claimId)
+    {
+        await using var scope = services.CreateAsyncScope();
+        scope.ServiceProvider.GetRequiredService<BackgroundTenant>().Initialize(SeededOrganization);
+        var unitOfWork = scope.ServiceProvider.GetRequiredService<IClaimUnitOfWork>();
+        var db = scope.ServiceProvider.GetRequiredService<ClaimsDbContext>();
+        var resource = $"ClaimsModule:Claim:{SeededOrganization:D}:{claimId:D}";
+
+        Assert.Equal("Shared", await unitOfWork.ExecuteClaimReadAsync(claimId, ReadLockMode, CancellationToken.None));
+        Assert.Equal("Exclusive", await unitOfWork.ExecuteClaimWriteAsync(claimId, ReadLockMode, CancellationToken.None));
+
+        Task<string> ReadLockMode(CancellationToken token) => db.Database
+            .SqlQuery<string>($"SELECT APPLOCK_MODE('public', {resource}, 'Transaction') AS [Value]")
+            .SingleAsync(token);
     }
 
     private static async Task VerifyReference(HttpClient handler, HttpClient supervisor)
@@ -213,8 +253,10 @@ public sealed class ClaimLifecycleApiTests(ClaimsApiFactory factory) : IClassFix
         using var other = otherApi.CreateApiClient();
         await FnolApiTests.Authenticate(other, otherApi, UserRoles.Supervisor);
         using var read = await other.GetAsync(path + "/audit");
+        using var check = await other.GetAsync(path + "/closure-check");
         using var write = await PutStatus(other, path, new(ClaimStatus.Reopened, "Hidden claim"), "reopen");
         Assert.Equal(HttpStatusCode.NotFound, read.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, check.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, write.StatusCode);
     }
 
@@ -224,8 +266,18 @@ public sealed class ClaimLifecycleApiTests(ClaimsApiFactory factory) : IClassFix
 
         var blockers = await RejectedStatus(client, path, new(ClaimStatus.Closed), "Parties");
         Assert.True(blockers.TryGetProperty("LossEvent.CauseOfLossCode", out _));
+        var auditBefore = await ReadAudit(client, path);
+        var check = await ReadClosureCheck(client, path);
+        Assert.True(check.TransitionAllowed);
+        Assert.False(check.CanClose);
+        Assert.False(check.RequiresPositiveReserveConfirmation);
+        Assert.Equal(blockers.GetProperty("Parties")[0].GetString(), Assert.Single(check.Blockers["Parties"]));
+        Assert.Equal(blockers.GetProperty("LossEvent.CauseOfLossCode")[0].GetString(),
+            Assert.Single(check.Blockers["LossEvent.CauseOfLossCode"]));
+        Assert.Equal(auditBefore.TotalCount, (await ReadAudit(client, path)).TotalCount);
 
         await SetCriticalState(true);
+        Assert.True((await ReadClosureCheck(client, path)).CanClose);
 
         Task SetCriticalState(bool isActive) => db.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE dbo.ClaimParties SET IsActive = {isActive} WHERE ClaimId = {claimId};
@@ -233,6 +285,9 @@ public sealed class ClaimLifecycleApiTests(ClaimsApiFactory factory) : IClassFix
             WHERE OrganizationEntityId = {SeededOrganization} AND Code = 'COL-FIRE';
             """);
     }
+
+    private static async Task<ClaimClosureCheck> ReadClosureCheck(HttpClient client, string path) =>
+        Assert.IsType<ClaimClosureCheck>(await client.GetFromJsonAsync<ClaimClosureCheck>(path + "/closure-check", JsonOptions));
 
     private static async Task VerifyConcurrentAuditPages(HttpClient client, string path)
     {

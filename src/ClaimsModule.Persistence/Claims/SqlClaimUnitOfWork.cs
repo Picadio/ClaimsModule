@@ -7,16 +7,20 @@ namespace ClaimsModule.Persistence.Claims;
 
 internal sealed class SqlClaimUnitOfWork(ClaimsDbContext db) : IClaimUnitOfWork
 {
+    public Task<T> ExecuteClaimReadAsync<T>(Guid claimId, Func<CancellationToken, Task<T>> read,
+        CancellationToken cancellationToken) =>
+        ExecuteAsync(ClaimLockResource(claimId), read, cancellationToken, IsolationLevel.Serializable, lockMode: "Shared");
+
     public Task<T> ExecuteIntakeAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken) =>
         ExecuteAsync($"ClaimsModule:FNOL:{db.OrganizationId:D}", work, cancellationToken);
 
     public Task<T> ExecuteClaimWriteAsync<T>(Guid claimId, Func<CancellationToken, Task<T>> work,
         CancellationToken cancellationToken) =>
-        ExecuteAsync($"ClaimsModule:Claim:{db.OrganizationId:D}:{claimId:D}", work, cancellationToken);
+        ExecuteAsync(ClaimLockResource(claimId), work, cancellationToken);
 
     public Task<T> ExecuteClaimJobAsync<T>(Guid claimId, Func<CancellationToken, Task<T>> work,
         CancellationToken cancellationToken) =>
-        ExecuteAsync($"ClaimsModule:Claim:{db.OrganizationId:D}:{claimId:D}", work, cancellationToken, IsolationLevel.RepeatableRead);
+        ExecuteAsync(ClaimLockResource(claimId), work, cancellationToken, IsolationLevel.RepeatableRead);
 
     public async Task SaveAsync(CancellationToken cancellationToken)
     {
@@ -30,16 +34,19 @@ internal sealed class SqlClaimUnitOfWork(ClaimsDbContext db) : IClaimUnitOfWork
         }
     }
 
+    private string ClaimLockResource(Guid claimId) => $"ClaimsModule:Claim:{db.OrganizationId:D}:{claimId:D}";
+
     private async Task<T> ExecuteAsync<T>(string lockResource, Func<CancellationToken, Task<T>> work,
-        CancellationToken cancellationToken, IsolationLevel isolation = IsolationLevel.ReadCommitted)
+        CancellationToken cancellationToken, IsolationLevel isolation = IsolationLevel.ReadCommitted,
+        string lockMode = "Exclusive")
     {
         await using var transaction = await db.Database.BeginTransactionAsync(isolation, cancellationToken);
         await db.Database.ExecuteSqlInterpolatedAsync($"""
             DECLARE @status int;
             EXEC @status = sys.sp_getapplock @Resource = {lockResource},
-                @LockMode = 'Exclusive', @LockOwner = 'Transaction', @LockTimeout = 10000;
+                @LockMode = {lockMode}, @LockOwner = 'Transaction', @LockTimeout = 10000;
             IF @status < 0
-                THROW 50001, 'Could not acquire the claim write lock.', 1;
+                THROW 50001, 'Could not acquire the claim lock.', 1;
             """, cancellationToken);
 
         var result = await work(cancellationToken);

@@ -147,6 +147,12 @@ public sealed class ReserveApiTests(ClaimsApiFactory factory) : IClassFixture<Cl
             using var blockedClose = await client.PutAsJsonAsync(path + "/status",
                 new ChangeClaimStatusRequest(ClaimStatus.Closed), JsonOptions);
             await AssertError(blockedClose, "TargetStatus");
+            var closure = await client.GetFromJsonAsync<ClaimClosureCheck>(path + "/closure-check", JsonOptions);
+            Assert.NotNull(closure);
+            Assert.True(closure.TransitionAllowed);
+            Assert.False(closure.CanClose);
+            Assert.True(closure.RequiresPositiveReserveConfirmation);
+            Assert.Contains("pending reserve approvals", Assert.Single(closure.Blockers["TargetStatus"]));
 
             var ledger = await client.GetFromJsonAsync<ClaimReserveLedger>(reserves, JsonOptions);
             Assert.NotNull(ledger);

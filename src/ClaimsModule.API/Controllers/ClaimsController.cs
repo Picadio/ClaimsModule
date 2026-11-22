@@ -46,6 +46,16 @@ public sealed class ClaimsController(ISender sender) : ControllerBase
         return claim is null ? NotFound() : Ok(claim);
     }
 
+    [HttpGet("{id:guid}/closure-check")]
+    [ResponseCache(NoStore = true)]
+    [ProducesResponseType<ClaimClosureCheck>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ClaimClosureCheck>> CheckClosure(Guid id, CancellationToken cancellationToken)
+    {
+        var check = await sender.Send(new GetClaimClosureCheckQuery(id), cancellationToken);
+        return check is null ? NotFound() : Ok(check);
+    }
+
     [HttpPut("{id:guid}/status")]
     [ProducesResponseType<ClaimStatusResult>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]

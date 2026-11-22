@@ -47,6 +47,12 @@ public sealed class SwaggerTests(ClaimsApiFactory factory) : IClassFixture<Claim
         var me = paths.GetProperty("/api/auth/me").GetProperty("get");
         Assert.Contains(me.GetProperty("security").EnumerateArray(),
             requirement => requirement.TryGetProperty("Bearer", out _));
+        var closure = paths.GetProperty("/api/claims/{id}/closure-check").GetProperty("get");
+        Assert.Contains(closure.GetProperty("security").EnumerateArray(),
+            requirement => requirement.TryGetProperty("Bearer", out _));
+        var list = paths.GetProperty("/api/claims").GetProperty("get");
+        Assert.Contains(list.GetProperty("parameters").EnumerateArray(), parameter =>
+            string.Equals("assignedHandlerName", parameter.GetProperty("name").GetString(), StringComparison.OrdinalIgnoreCase));
 
         var login = paths.GetProperty("/api/auth/demo-token").GetProperty("post");
         Assert.False(login.TryGetProperty("security", out var security) && security.GetArrayLength() > 0);

@@ -97,9 +97,9 @@ public sealed class Claim : OrganizationRecord
             ? warnings.FirstOrDefault(warning => warning.Code == ClaimWarning.OutsidePolicyPeriod)
             : null;
 
-        if (Status == target || (Status == ClaimStatus.Draft && target == ClaimStatus.Closed))
+        if (GetStatusTransitionRestriction(target) is { } restriction)
         {
-            throw new ClaimRuleViolation("TargetStatus", $"The transition from {Status} to {target} is not allowed.");
+            throw new ClaimRuleViolation(restriction.Field, restriction.Message);
         }
 
         var issues = new List<ClaimRuleError>();
@@ -108,7 +108,7 @@ public sealed class Claim : OrganizationRecord
             issues.Add(new("AssignedHandlerId", "A handler can be assigned when opening a draft."));
         }
 
-        if (reachesOpen || target == ClaimStatus.Closed)
+        if (reachesOpen)
         {
             issues.AddRange(GetCriticalIssues(facts.CauseOfLossIsActive, occurredAt));
         }
@@ -138,10 +138,7 @@ public sealed class Claim : OrganizationRecord
 
         if (target == ClaimStatus.Closed)
         {
-            if (facts.Reserves.HasPendingApproval)
-            {
-                issues.Add(new("TargetStatus", "Resolve pending reserve approvals before closing the claim."));
-            }
+            issues.AddRange(GetClosureIssues(facts, occurredAt));
 
             if (facts.Reserves.HasPositiveComponentBalance && (!details.ConfirmPositiveReserveBalance || reason is null))
             {
@@ -169,6 +166,24 @@ public sealed class Claim : OrganizationRecord
         return new ClaimStatusChange(previousStatus, target, Status, previousHandlerId, reason, policyWarning,
             target == ClaimStatus.Closed && facts.Reserves.HasPositiveComponentBalance,
             target == ClaimStatus.PendingPayment && previousStatus == ClaimStatus.UnderInvestigation);
+    }
+
+    public ClaimRuleError? GetStatusTransitionRestriction(ClaimStatus target) =>
+        Status == target || (Status == ClaimStatus.Draft && target == ClaimStatus.Closed)
+            ? new("TargetStatus", $"The transition from {Status} to {target} is not allowed.")
+            : null;
+
+    public IEnumerable<ClaimRuleError> GetClosureIssues(ClaimLifecycleFacts facts, DateTimeOffset now)
+    {
+        foreach (var issue in GetCriticalIssues(facts.CauseOfLossIsActive, now))
+        {
+            yield return issue;
+        }
+
+        if (facts.Reserves.HasPendingApproval)
+        {
+            yield return new("TargetStatus", "Resolve pending reserve approvals before closing the claim.");
+        }
     }
 
     public void EnsureCanSubmitReserve()

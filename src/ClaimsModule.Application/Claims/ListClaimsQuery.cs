@@ -1,3 +1,4 @@
+using ClaimsModule.Application.Security;
 using ClaimsModule.Domain.Claims;
 using FluentValidation;
 using MediatR;
@@ -10,6 +11,7 @@ public sealed record ListClaimsQuery : IRequest<ClaimPage>
     public DateOnly? DateFrom { get; init; }
     public DateOnly? DateTo { get; init; }
     public Guid? AssignedHandlerId { get; init; }
+    public string? AssignedHandlerName { get; init; }
     public string? CauseOfLossCode { get; init; }
     public Guid? PolicyId { get; init; }
     public string? Search { get; init; }
@@ -26,10 +28,24 @@ public sealed record ClaimSummary(Guid Id, string ClaimNumber, string? ClientNam
     public DateTimeOffset? LastSlaBreachAt { get; init; }
 }
 
-internal sealed class ListClaimsHandler(IClaimStore store) : IRequestHandler<ListClaimsQuery, ClaimPage>
+internal sealed class ListClaimsHandler(IClaimStore store, IClaimHandlerDirectory handlers, ICurrentUser currentUser)
+    : IRequestHandler<ListClaimsQuery, ClaimPage>
 {
-    public Task<ClaimPage> Handle(ListClaimsQuery request, CancellationToken cancellationToken) =>
-        store.ListAsync(request, cancellationToken);
+    public Task<ClaimPage> Handle(ListClaimsQuery request, CancellationToken cancellationToken)
+    {
+        if (request.AssignedHandlerName?.Trim() is { Length: > 0 } name)
+        {
+            var handlerId = handlers.FindByName(currentUser.Identity.OrganizationEntityId, name);
+            if (handlerId is null || (request.AssignedHandlerId.HasValue && request.AssignedHandlerId != handlerId))
+            {
+                return Task.FromResult(new ClaimPage([], request.Page, request.PageSize, 0));
+            }
+
+            request = request with { AssignedHandlerId = handlerId };
+        }
+
+        return store.ListAsync(request, cancellationToken);
+    }
 }
 
 internal sealed class ListClaimsValidator : AbstractValidator<ListClaimsQuery>
@@ -43,6 +59,7 @@ internal sealed class ListClaimsValidator : AbstractValidator<ListClaimsQuery>
         RuleForEach(query => query.Status!).IsInEnum();
         RuleFor(query => query.DateTo).Must((query, dateTo) => !(dateTo < query.DateFrom))
             .WithMessage("DateTo must be on or after DateFrom.");
+        RuleFor(query => query.AssignedHandlerName).MaximumLength(255);
         RuleFor(query => query.CauseOfLossCode).MaximumLength(50);
         RuleFor(query => query.Search).MaximumLength(255);
     }

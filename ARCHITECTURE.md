@@ -12,7 +12,9 @@ caller, and a failed closure returns all blocking conditions.
 | Endpoint | Purpose |
 | --- | --- |
 | `PUT /api/claims/{id}/status` | Apply a transition using `targetStatus` and optional `reason`. Accepts `Idempotency-Key`. |
-| `GET /api/reference/claim-statuses` | List statuses and next steps available to the caller's role. Claim-specific checks run on writes. |
+| `GET /api/reference/claim-statuses` | List statuses and next steps available to the caller's role. |
+| `GET /api/claims/{id}/closure-check` | Read the claim-specific checklist for closing. Returns blockers and indicates when a positive balance needs confirmation. |
+| `GET /api/claims?assignedHandlerName=hand` | Filter claims by a partial, case-insensitive name from the tenant's demo handler directory. |
 | `GET /api/claims/{id}/audit?page=1&pageSize=20` | Return audit entries newest first. Page sizes range from 1 to 100. |
 | `GET /api/claims/{id}` | Include assignment, closure metadata and up to ten recent audit entries. |
 
@@ -31,6 +33,9 @@ configured organization. A loss outside the policy period requires
 same transaction. Other FNOL warnings remain informational. Opening and closure
 recheck the critical intake conditions against current data. FNOL rejects
 critical input before persistence, so this slice has no stored critical issues.
+Handler-name matching resolves the configured `DisplayName` to the existing
+assignment ID before applying SQL pagination. An explicit `assignedHandlerId`
+also has to match when supplied.
 
 `PendingPayment` requires an approved reserve. Coming from
 `UnderInvestigation` also requires `liabilityDetermined: true`. Closure blocks
@@ -38,6 +43,15 @@ pending approvals and requires `confirmPositiveReserveBalance: true` plus a
 reason when a component has a positive balance. These checks read persisted
 reserve facts in the claim write transaction. A component with a nonzero
 approved balance qualifies for `PendingPayment`.
+
+The closure checklist reads claim and reserve facts in a short serializable
+transaction. It takes a shared claim lock before reading so concurrent edits
+and the checklist cannot hold conflicting row locks in opposite orders. An
+in-progress edit can delay the checklist until it releases the claim lock.
+It uses the same transition policy and domain rules as the write.
+`canClose` means no current blockers, and a positive component balance still
+requires explicit confirmation and a reason in the write. The command checks
+the rules against the latest data in its own transaction.
 
 The Unit of Work takes a transaction-owned write lock per tenant and claim.
 Future party and reserve commands should use this lock when updating facts the

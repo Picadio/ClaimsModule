@@ -56,15 +56,9 @@ internal sealed class ChangeClaimStatusHandler(IClaimLifecycleStore lifecycle, I
 
             var target = request.TargetStatus!.Value;
             var rules = await lifecycle.ListTransitionsAsync(token);
-            var available = ClaimTransitionRule.AvailableTo(rules, user.Role, options)
-                .Where(rule => rule.FromStatus == claim.Status).Select(rule => rule.ToStatus).Order().ToArray();
-            if (!available.Contains(target))
+            if (ClaimTransitionRule.CheckTransition(rules, user.Role, options, claim.Status, target) is { } issue)
             {
-                var next = available.Length == 0
-                    ? "No next statuses are available."
-                    : $"Available next statuses are {string.Join(", ", available)}.";
-                throw new ClaimRuleViolation("TargetStatus",
-                    $"The transition from {claim.Status} to {target} is not allowed for this request. {next}");
+                throw new ClaimRuleViolation(issue.Field, issue.Message);
             }
 
             if (request.AssignedHandlerId is Guid handler && !handlers.IsHandler(user.OrganizationEntityId, handler))

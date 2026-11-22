@@ -19,6 +19,7 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
     private readonly bool openApiEnabled;
     private readonly bool allowDirectClosure;
     private readonly bool glJobsEnabled;
+    private readonly string? handlerDisplayName;
     private readonly Dictionary<string, DemoAccount> accounts =
         new[] { UserRoles.Handler, UserRoles.Supervisor, UserRoles.Manager }
             .ToDictionary(role => role, _ => new DemoAccount(Guid.NewGuid(), RandomSecret()));
@@ -32,7 +33,7 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
 
     internal ClaimsApiFactory(bool demoEnabled, string? environment = null,
         string? claimsConnection = null, Guid? organizationId = null, bool openApiEnabled = false,
-        bool allowDirectClosure = false, bool glJobsEnabled = false)
+        bool allowDirectClosure = false, bool glJobsEnabled = false, string? handlerDisplayName = null)
     {
         this.demoEnabled = demoEnabled;
         this.environment = environment ?? Environments.Development;
@@ -40,6 +41,7 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
         this.openApiEnabled = openApiEnabled;
         this.allowDirectClosure = allowDirectClosure;
         this.glJobsEnabled = glJobsEnabled;
+        this.handlerDisplayName = handlerDisplayName;
         OrganizationId = organizationId ?? Guid.NewGuid();
     }
 
@@ -68,6 +70,11 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
         {
             settings[$"Authentication:Demo:Accounts:{role}:UserId"] = account.UserId.ToString("D");
             settings[$"Authentication:Demo:Accounts:{role}:Password"] = account.Password;
+        }
+
+        if (handlerDisplayName is not null)
+        {
+            settings[$"Authentication:Demo:Accounts:{UserRoles.Handler}:DisplayName"] = handlerDisplayName;
         }
 
         if (claimsConnection is not null)

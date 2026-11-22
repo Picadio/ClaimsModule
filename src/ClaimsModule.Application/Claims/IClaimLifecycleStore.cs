@@ -15,6 +15,7 @@ public interface IClaimLifecycleStore
 public interface IClaimHandlerDirectory
 {
     bool IsHandler(Guid organizationId, Guid userId);
+    Guid? FindByName(Guid organizationId, string name);
 }
 
 public sealed record StoredStatusChange(Guid ActorId, DateTimeOffset OccurredAt, string KeyHash, string RequestHash,

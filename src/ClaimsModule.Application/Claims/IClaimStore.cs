@@ -21,6 +21,8 @@ public sealed record StoredClaimSubmission(Guid UserId, string KeyHash, string R
 
 public interface IClaimUnitOfWork
 {
+    Task<T> ExecuteClaimReadAsync<T>(Guid claimId, Func<CancellationToken, Task<T>> read,
+        CancellationToken cancellationToken);
     Task<T> ExecuteIntakeAsync<T>(Func<CancellationToken, Task<T>> work, CancellationToken cancellationToken);
     Task<T> ExecuteClaimWriteAsync<T>(Guid claimId, Func<CancellationToken, Task<T>> work,
         CancellationToken cancellationToken);

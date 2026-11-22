@@ -66,9 +66,26 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
     }
 
     [Theory]
+    [InlineData("assignedHandlerName=Unmatched")]
+    [InlineData("assignedHandlerName=hAnD&assignedHandlerId=00000000-0000-0000-0000-000000000001")]
+    public async Task ClaimListWithNoMatchingHandlerReturnsRequestedEmptyPage(string filter)
+    {
+        using var client = factory.CreateApiClient();
+        await Authenticate(client, factory);
+        var page = await client.GetFromJsonAsync<ClaimPage>($"{ClaimsPath}?{filter}&page=3&pageSize=7", ResponseJson);
+
+        Assert.NotNull(page);
+        Assert.Empty(page.Items);
+        Assert.Equal(0, page.TotalCount);
+        Assert.Equal(3, page.Page);
+        Assert.Equal(7, page.PageSize);
+    }
+
+    [Theory]
+    [InlineData("/api/claims?assignedHandlerName=", 256, "AssignedHandlerName")]
     [InlineData("/api/policies/search?q=", 256, "Q")]
     [InlineData("/api/reference/cause-of-loss-codes?perilCategory=", 51, "PerilCategory")]
-    public async Task ReferenceReadsRejectOverlongFilters(string path, int length, string invalidField)
+    public async Task ReadsRejectOverlongFilters(string path, int length, string invalidField)
     {
         using var client = factory.CreateApiClient();
         await Authenticate(client, factory);
@@ -164,7 +181,7 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
         {
             await context.Database.MigrateAsync();
             await using var sqlApi = new ClaimsApiFactory(demoEnabled: true, organizationId: SeededOrganization,
-                claimsConnection: database.ConnectionString);
+                claimsConnection: database.ConnectionString, handlerDisplayName: "Alex Morgan");
             using var client = sqlApi.CreateApiClient();
             await Authenticate(client, sqlApi);
             var request = ValidRequest();
@@ -223,6 +240,11 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
             Assert.NotNull(hiddenList);
             Assert.Equal(0, hiddenList.TotalCount);
             Assert.Empty(hiddenList.Items);
+            var hiddenNameMatch = await otherClient.GetFromJsonAsync<ClaimPage>(
+                $"{ClaimsPath}?assignedHandlerName=handler", ResponseJson);
+            Assert.NotNull(hiddenNameMatch);
+            Assert.Equal(0, hiddenNameMatch.TotalCount);
+            Assert.Empty(hiddenNameMatch.Items);
 
             var correlationId = Guid.Parse(Assert.Single(firstRequest.Headers.GetValues("X-Correlation-ID")));
             var auditRows = await context.Database.SqlQuery<int>($"""
@@ -284,6 +306,18 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
         Assert.Equal(second.Id, match.Id);
         Assert.Equal(handlerId, match.AssignedHandlerId);
         Assert.Equal("COL-FIRE", match.CauseOfLossCode);
+
+        const string nameFilter = "assignedHandlerName=%20mORg%20";
+        var byName = await client.GetFromJsonAsync<ClaimPage>($"{ClaimsPath}?{nameFilter}&pageSize=1", ResponseJson);
+        Assert.NotNull(byName);
+        Assert.Equal(1, byName.TotalCount);
+        Assert.Equal(second.Id, Assert.Single(byName.Items).Id);
+
+        var intersection = await client.GetFromJsonAsync<ClaimPage>(
+            $"{ClaimsPath}?{nameFilter}&assignedHandlerId={handlerId}&page=2&pageSize=1", ResponseJson);
+        Assert.NotNull(intersection);
+        Assert.Equal(1, intersection.TotalCount);
+        Assert.Empty(intersection.Items);
     }
 
     internal static async Task Authenticate(HttpClient client, ClaimsApiFactory host, string role = UserRoles.Handler)
