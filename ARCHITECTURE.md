@@ -148,3 +148,64 @@ Its SQL login needs permission to initialize the Hangfire schema. Configure
 `Jobs__OrganizationEntityIds__0` and additional indexed values for each
 organization that needs recovery. The demo organization is the default.
 Keep the API host running for background processing. [Hangfire SQL storage](https://docs.hangfire.io/en/latest/configuration/using-sql-server.html)
+
+## SLA monitoring
+
+Hangfire scans each configured organization every 15 minutes. A Draft or Open
+claim is eligible strictly more than 48 hours after its last business activity,
+using creation time until the first update. The claim lock serializes checks,
+and the last breach marker and append-only audit commit together. The same
+claim produces at most one breach event per 24 hours. The API reports the
+active flag and last recorded time separately from lifecycle status. Business
+activity clears the active flag until a new breach is recorded.
+
+## Parties and attachments
+
+POST and DELETE under `/api/claims/{id}/parties` add and deactivate parties.
+The claim lock serializes deactivations so one active Claimant always remains.
+The active and inactive parties remain visible in claim detail.
+
+`POST /api/claims/{id}/documents` accepts one multipart `file` with
+`documentType` and optional `notes`. The API checks the extension, media type
+and file signature or text encoding up to 50 MiB. It stores a unique,
+sanitized file key under the organization's claim path. Metadata, upload
+audit and the idempotency receipt commit together. A repeated request returns
+the same metadata with a newly issued link. If the database write fails
+before commit, the API attempts to remove the file. If Azure loses its
+upload response, cleanup checks the request's ownership token and uses an
+ETag condition before deleting. An ambiguous SQL commit leaves the file
+intact so a committed record can still download it.
+
+Set `StorageProvider=AzureBlob` and `ConnectionStrings__Blob` to use the
+private `claim-documents` container and HTTPS read SAS links valid for one hour.
+Disable anonymous blob access at the storage account. The browser downloads
+directly from Azure using the link returned by GET documents or claim detail.
+Local development defaults to `LocalFileSystem` under `uploads`, configurable
+via `Storage__LocalRoot`. Local links use the authenticated API and should be
+fetched with the caller's Bearer token. [Azure service SAS](https://learn.microsoft.com/en-us/azure/storage/blobs/sas-service-create)
+
+## Claim overview and intake validation
+
+FNOL accepts optional severity and uses Standard when omitted. The detail API
+returns severity and notes. `PUT /api/claims/{id}/notes` replaces notes, with
+`null` clearing them. `PUT /api/claims/{id}/policy` links an unlinked claim to a
+visible policy in the same organization. It resolves the unknown-policy warning
+and applies the intake date rule. If a claim has already left Draft, the caller
+must acknowledge an outside-policy-period warning in the link request.
+
+`POST /api/claims/validate` runs the same request validation, policy and cause
+lookups, and initial reserve rules used for intake. It returns warnings and
+the initial reserve approval preview. Validation uses no claim sequence and
+creates no records.
+
+## Audit database permissions
+
+The migrations create the `ClaimsAuditWriter` database role with SELECT and
+INSERT access and explicit denial of UPDATE and DELETE on ClaimAuditLog.
+The UPDATE denial applies to each column as well. Migrations adding audit
+columns must extend the column-level denial.
+The append-only trigger remains active. Configure the API's `Claims` connection
+with an existing non-owner runtime database principal and enroll it using
+`deploy/ConfigureClaimsAuditRuntime.sql`. Keep the migration administrator
+connection in `ClaimsMigrations`. The audit role supplements the runtime
+principal's permissions on the claim and job tables.

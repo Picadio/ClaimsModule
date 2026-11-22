@@ -17,12 +17,14 @@ public sealed class ClaimsDbContext(DbContextOptions<ClaimsDbContext> options, I
         ConfigureRecord<Claim>(modelBuilder);
         ConfigureRecord<LossEvent>(modelBuilder);
         ConfigureRecord<ClaimParty>(modelBuilder);
+        ConfigureRecord<ClaimDocument>(modelBuilder);
         ConfigureRecord<ClaimRiskObject>(modelBuilder);
         ConfigureRecord<ClaimWarning>(modelBuilder);
         ConfigureRecord<Policy>(modelBuilder);
         ConfigureRecord<CauseOfLoss>(modelBuilder);
         ConfigureRecord<ClaimNumberCounter>(modelBuilder);
         ConfigureRecord<ClaimSubmission>(modelBuilder);
+        ConfigureRecord<ClaimMutationSubmission>(modelBuilder);
         ConfigureRecord<ClaimAuditEntry>(modelBuilder);
         ConfigureRecord<ClaimStatusSubmission>(modelBuilder);
         ConfigureRecord<ClaimReserveComponent>(modelBuilder);

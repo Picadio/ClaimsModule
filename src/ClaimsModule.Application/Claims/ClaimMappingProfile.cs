@@ -16,6 +16,8 @@ public sealed class ClaimMappingProfile : Profile
         CreateMap<Claim, ClaimDetail>()
             .ForCtorParam(nameof(ClaimDetail.ReportedAt), member => member.MapFrom(claim => claim.CreatedAt))
             .ForMember(detail => detail.RecentAuditEntries, member => member.Ignore())
+            .ForMember(detail => detail.Documents, member => member.Ignore())
+            .ForMember(detail => detail.IsSlaBreached, member => member.Ignore())
             .ForMember(detail => detail.ReserveBalances, member => member.Ignore());
     }
 }

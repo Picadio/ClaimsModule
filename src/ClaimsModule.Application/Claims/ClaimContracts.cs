@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using ClaimsModule.Application.Claims.Documents;
 using ClaimsModule.Application.Reserves;
 using ClaimsModule.Domain.Claims;
 
@@ -6,7 +7,8 @@ namespace ClaimsModule.Application.Claims;
 
 public sealed record CreateClaimRequest(Guid? PolicyId, string ClaimType, LossDetails LossEvent,
     IReadOnlyList<PartyDetails> Parties, IReadOnlyList<RiskDetails>? RiskObjects = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InitialReserveRequest? InitialReserve = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] InitialReserveRequest? InitialReserve = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] ClaimSeverity? Severity = null);
 
 public sealed record CreatedClaim(Guid Id, string ClaimNumber, ClaimStatus Status, IReadOnlyList<ClaimWarningDto> Warnings)
 {
@@ -21,7 +23,12 @@ public sealed record ClaimDetail(Guid Id, string ClaimNumber, ClaimStatus Status
     public Guid? AssignedHandlerId { get; init; }
     public DateTimeOffset? ClosedAt { get; init; }
     public string? ClosureReason { get; init; }
+    public ClaimSeverity Severity { get; init; }
+    public string? Notes { get; init; }
+    public bool IsSlaBreached { get; init; }
+    public DateTimeOffset? LastSlaBreachAt { get; init; }
     public IReadOnlyList<ClaimAuditItem> RecentAuditEntries { get; init; } = [];
+    public IReadOnlyList<ClaimDocumentDto> Documents { get; init; } = [];
     public IReadOnlyList<ReserveBalance> ReserveBalances { get; init; } = [];
 }
 

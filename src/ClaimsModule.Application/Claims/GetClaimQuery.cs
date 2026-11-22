@@ -1,4 +1,5 @@
 using AutoMapper;
+using ClaimsModule.Application.Claims.Documents;
 using ClaimsModule.Application.Reserves;
 using MediatR;
 
@@ -6,7 +7,8 @@ namespace ClaimsModule.Application.Claims;
 
 public sealed record GetClaimQuery(Guid Id) : IRequest<ClaimDetail?>;
 
-internal sealed class GetClaimHandler(IClaimStore store, IClaimAuditReader audit, IReserveStore reserves, IMapper mapper)
+internal sealed class GetClaimHandler(IClaimStore store, IClaimAuditReader audit, IReserveStore reserves, IMapper mapper,
+    IClaimDocumentStore documents, DocumentLinks links, TimeProvider clock)
     : IRequestHandler<GetClaimQuery, ClaimDetail?>
 {
     public async Task<ClaimDetail?> Handle(GetClaimQuery request, CancellationToken cancellationToken)
@@ -24,6 +26,13 @@ internal sealed class GetClaimHandler(IClaimStore store, IClaimAuditReader audit
         }
 
         var balances = await reserves.ReadBalancesAsync(claim.Id, cancellationToken);
-        return mapper.Map<ClaimDetail>(claim) with { RecentAuditEntries = recent.Items, ReserveBalances = balances };
+        var attachments = await documents.ListAsync(claim.Id, cancellationToken);
+        return mapper.Map<ClaimDetail>(claim) with
+        {
+            RecentAuditEntries = recent.Items,
+            ReserveBalances = balances,
+            Documents = attachments?.Select(links.Create).ToArray() ?? [],
+            IsSlaBreached = claim.IsSlaBreached(clock.GetUtcNow())
+        };
     }
 }

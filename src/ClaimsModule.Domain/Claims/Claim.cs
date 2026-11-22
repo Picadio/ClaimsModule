@@ -12,6 +12,8 @@ public sealed class Claim : OrganizationRecord
     public string ClaimNumber { get; private set; } = null!;
     public string ClaimType { get; private set; } = null!;
     public ClaimStatus Status { get; private set; }
+    public ClaimSeverity Severity { get; private set; }
+    public string? Notes { get; private set; }
     public Guid? PolicyId { get; private set; }
     public string? PolicyNumber { get; private set; }
     public string? ClientName { get; private set; }
@@ -19,6 +21,7 @@ public sealed class Claim : OrganizationRecord
     public DateTimeOffset? ClosedAt { get; private set; }
     public string? ClosureReason { get; private set; }
     public bool ReserveLimitOverrideEnabled { get; private set; }
+    public DateTimeOffset? LastSlaBreachAt { get; private set; }
     public LossEvent LossEvent { get; private set; } = null!;
     public IReadOnlyList<ClaimParty> Parties => parties.AsReadOnly();
     public IReadOnlyList<ClaimRiskObject> RiskObjects => riskObjects.AsReadOnly();
@@ -34,6 +37,7 @@ public sealed class Claim : OrganizationRecord
     {
         ClaimNumber = FnolRules.FormatClaimNumber(reportedAt, sequence);
         ClaimType = details.ClaimType.Trim();
+        Severity = details.Severity;
         Status = ClaimStatus.Draft;
         PolicyId = policy?.Id;
         PolicyNumber = policy?.PolicyNumber;
@@ -45,15 +49,13 @@ public sealed class Claim : OrganizationRecord
 
         if (policy is null)
         {
-            AddWarning("POLICY_UNKNOWN", "PolicyId", "The claim was reported without a known policy.");
+            AddWarning(ClaimWarning.UnknownPolicy, "PolicyId", "The claim was reported without a known policy.");
         }
         else
         {
-            var lossDate = DateOnly.FromDateTime(LossEvent.LossDate.UtcDateTime);
-            if (lossDate < policy.EffectiveDate || lossDate > policy.ExpirationDate)
+            if (FnolRules.IsOutsidePolicyPeriod(LossEvent.LossDate, policy))
             {
-                AddWarning(ClaimWarning.OutsidePolicyPeriod, "LossEvent.LossDate",
-                    "The loss date is outside the policy's effective period.");
+                AddPolicyPeriodWarning(actorId, reportedAt);
             }
         }
 
@@ -182,7 +184,7 @@ public sealed class Claim : OrganizationRecord
         }
     }
 
-    public void RecordReserveActivity(Guid actorId, DateTimeOffset occurredAt) => MarkUpdated(actorId, occurredAt);
+    public void RecordActivity(Guid actorId, DateTimeOffset occurredAt) => MarkUpdated(actorId, occurredAt);
 
     public bool EnableReserveLimitOverride(Guid actorId, DateTimeOffset occurredAt)
     {
@@ -195,6 +197,98 @@ public sealed class Claim : OrganizationRecord
         ReserveLimitOverrideEnabled = true;
         MarkUpdated(actorId, occurredAt);
         return true;
+    }
+
+    public bool TryRecordSlaBreach(DateTimeOffset now)
+    {
+        if (Status is not (ClaimStatus.Draft or ClaimStatus.Open) ||
+            (UpdatedAt ?? CreatedAt) >= now.AddHours(-ClaimSla.InactivityHours) ||
+            LastSlaBreachAt > now.AddHours(-ClaimSla.RepeatHours))
+        {
+            return false;
+        }
+
+        LastSlaBreachAt = now.ToUniversalTime();
+        return true;
+    }
+
+    public bool IsSlaBreached(DateTimeOffset now) =>
+        Status is ClaimStatus.Draft or ClaimStatus.Open &&
+        (UpdatedAt ?? CreatedAt) < now.AddHours(-ClaimSla.InactivityHours) &&
+        LastSlaBreachAt >= (UpdatedAt ?? CreatedAt);
+
+    public ClaimParty AddParty(PartyDetails details, Guid actorId, DateTimeOffset now)
+    {
+        var party = new ClaimParty(OrganizationEntityId, actorId, now, details);
+        parties.Add(party);
+        MarkUpdated(actorId, now);
+        return party;
+    }
+
+    public bool DeactivateParty(ClaimParty party, Guid actorId, DateTimeOffset now)
+    {
+        if (!parties.Contains(party) || party.IsDeleted)
+        {
+            throw new ClaimRuleViolation("PartyId", "The party does not belong to this claim.");
+        }
+
+        if (!party.IsActive)
+        {
+            return false;
+        }
+
+        if (party.Role == ClaimPartyRole.Claimant &&
+            !parties.Any(other => other != party && other.Role == ClaimPartyRole.Claimant &&
+                other.IsActive && !other.IsDeleted))
+        {
+            throw new ClaimRuleViolation("PartyId", "The last active claimant cannot be removed.");
+        }
+
+        party.Deactivate(actorId, now);
+        MarkUpdated(actorId, now);
+        return true;
+    }
+
+    public bool SetNotes(string? notes, Guid actorId, DateTimeOffset now)
+    {
+        var normalized = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        if (Notes == normalized)
+        {
+            return false;
+        }
+
+        Notes = normalized;
+        MarkUpdated(actorId, now);
+        return true;
+    }
+
+    public ClaimPolicyChange? LinkPolicy(LinkedPolicy policy, bool acknowledgePolicyPeriodWarning, Guid actorId, DateTimeOffset now)
+    {
+        if (PolicyId == policy.Id)
+        {
+            return null;
+        }
+
+        if (PolicyId.HasValue || Status is ClaimStatus.Closed or ClaimStatus.Withdrawn)
+        {
+            throw new ClaimRuleViolation("PolicyId", "Only an unresolved policy on a nonterminal claim can be linked.");
+        }
+
+        var outsidePeriod = FnolRules.IsOutsidePolicyPeriod(LossEvent.LossDate, policy);
+        if (outsidePeriod && Status != ClaimStatus.Draft && !acknowledgePolicyPeriodWarning)
+        {
+            throw new ClaimRuleViolation("AcknowledgePolicyPeriodWarning",
+                "Acknowledge the loss date warning before linking this policy.");
+        }
+
+        PolicyId = policy.Id;
+        PolicyNumber = policy.PolicyNumber;
+        ClientName = policy.ClientName;
+        var resolved = warnings.FirstOrDefault(warning => warning.Code == ClaimWarning.UnknownPolicy && !warning.IsDeleted);
+        resolved?.Resolve(actorId, now);
+        var outsideWarning = outsidePeriod ? AddPolicyPeriodWarning(actorId, now) : null;
+        MarkUpdated(actorId, now);
+        return new ClaimPolicyChange(resolved, outsideWarning, outsidePeriod && Status != ClaimStatus.Draft);
     }
 
     private IEnumerable<ClaimRuleError> GetCriticalIssues(bool causeOfLossIsActive, DateTimeOffset occurredAt)
@@ -238,6 +332,21 @@ public sealed class Claim : OrganizationRecord
 
     private void AddWarning(string code, string field, string message) =>
         warnings.Add(new ClaimWarning(OrganizationEntityId, CreatedByUserId, CreatedAt, code, field, message));
+
+    private ClaimWarning AddPolicyPeriodWarning(Guid actorId, DateTimeOffset now)
+    {
+        var warning = new ClaimWarning(OrganizationEntityId, actorId, now, ClaimWarning.OutsidePolicyPeriod,
+            "LossEvent.LossDate", "The loss date is outside the policy's effective period.");
+        warnings.Add(warning);
+        return warning;
+    }
 }
 
 public sealed record ClaimCreated(DateTimeOffset OccurredAt);
+public sealed record ClaimPolicyChange(ClaimWarning? ResolvedWarning, ClaimWarning? AddedWarning, bool Acknowledged);
+
+public static class ClaimSla
+{
+    public const int InactivityHours = 48;
+    public const int RepeatHours = 24;
+}

@@ -3,7 +3,6 @@ using ClaimsModule.Application.Exceptions;
 using ClaimsModule.Application.Reserves;
 using ClaimsModule.Application.Security;
 using ClaimsModule.Domain.Claims;
-using ClaimsModule.Domain.Reserves;
 using MediatR;
 
 namespace ClaimsModule.Application.Claims;
@@ -12,7 +11,7 @@ public sealed record CreateClaimCommand(CreateClaimRequest Request, string? Idem
     : IRequest<CreatedClaim>;
 
 internal sealed class CreateClaimHandler(IClaimStore store, IClaimUnitOfWork unitOfWork, ICurrentUser currentUser,
-    TimeProvider clock, IPublisher publisher, IMapper mapper, ReserveWriter reserveWriter)
+    TimeProvider clock, IPublisher publisher, IMapper mapper, ReserveWriter reserveWriter, ClaimIntake intake)
     : IRequestHandler<CreateClaimCommand, CreatedClaim>
 {
     public async Task<CreatedClaim> Handle(CreateClaimCommand command, CancellationToken cancellationToken)
@@ -30,12 +29,8 @@ internal sealed class CreateClaimHandler(IClaimStore store, IClaimUnitOfWork uni
             }
 
             var reportedAt = clock.GetUtcNow();
-            var policy = request.PolicyId is Guid policyId ? await store.FindPolicyAsync(policyId, token) : null;
-            var activeCause = await store.IsCauseActiveAsync(request.LossEvent.CauseOfLossCode.Trim().ToUpperInvariant(), token);
             var sequence = await store.NextSequenceAsync(reportedAt.UtcDateTime.Year, token);
-            var claim = Claim.Report(user.OrganizationEntityId, user.UserId, reportedAt, sequence,
-                new FnolDetails(request.ClaimType, request.LossEvent, request.Parties, request.RiskObjects ?? []),
-                policy, activeCause);
+            var claim = await intake.PrepareAsync(request, user, reportedAt, sequence, token);
 
             store.Add(claim);
             await unitOfWork.SaveAsync(token);
@@ -45,7 +40,7 @@ internal sealed class CreateClaimHandler(IClaimStore store, IClaimUnitOfWork uni
             if (request.InitialReserve is { } initial)
             {
                 var reserve = await reserveWriter.SubmitAsync(claim, null, initial.Component!.Value,
-                    new ReserveChange(ReserveTransactionType.Add, initial.Amount, "Initial reserve at FNOL."),
+                    ReserveWriter.InitialChange(initial.Amount),
                     user.UserId, reportedAt, command.CorrelationId, 1 + claim.Warnings.Count, token);
                 response = response with { InitialReserve = reserve };
             }

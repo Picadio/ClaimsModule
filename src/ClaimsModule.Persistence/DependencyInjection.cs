@@ -1,4 +1,5 @@
 using ClaimsModule.Application.Claims;
+using ClaimsModule.Application.Claims.Documents;
 using ClaimsModule.Application.Reference;
 using ClaimsModule.Application.Reserves;
 using ClaimsModule.Persistence.Claims;
@@ -13,6 +14,8 @@ public static class DependencyInjection
     {
         services.AddDbContext<ClaimsDbContext>(options => options.UseSqlServer(connectionString));
         services.AddScoped<IClaimStore, SqlClaimStore>();
+        services.AddScoped<IClaimMutationStore, SqlClaimMutationStore>();
+        services.AddScoped<IClaimDocumentStore, SqlClaimDocumentStore>();
         services.AddScoped<IClaimLifecycleStore, SqlClaimLifecycleStore>();
         services.AddScoped<IReserveStore, SqlReserveStore>();
         services.AddScoped<IReferenceDataStore, SqlReferenceDataStore>();

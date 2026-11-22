@@ -6,6 +6,8 @@ using ClaimsModule.API.Security;
 using ClaimsModule.Application;
 using ClaimsModule.Application.Claims;
 using ClaimsModule.Infrastructure.Jobs;
+using ClaimsModule.Infrastructure.Storage;
+using ClaimsModule.Domain.Claims;
 using ClaimsModule.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,6 +18,12 @@ builder.Services.AddOpenApi(OpenApiConfiguration.AddBearerSupport);
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ClaimExceptionHandler>();
 builder.Services.AddClaimsApplication();
+var blobConnection = builder.Configuration.GetConnectionString("Blob");
+var storageProvider = builder.Configuration.GetValue("StorageProvider",
+    !string.IsNullOrWhiteSpace(blobConnection) ? DocumentStorageProvider.AzureBlob
+        : builder.Environment.IsDevelopment() ? DocumentStorageProvider.LocalFileSystem : DocumentStorageProvider.Unavailable);
+var localRoot = Path.GetFullPath(builder.Configuration["Storage:LocalRoot"] ?? "uploads", builder.Environment.ContentRootPath);
+builder.Services.AddClaimDocumentStorage(storageProvider, blobConnection, localRoot);
 var claimsConnection = builder.Configuration.GetConnectionString("Claims");
 builder.Services.AddClaimsPersistence(claimsConnection);
 if (builder.Configuration.GetValue("Jobs:Enabled", !string.IsNullOrWhiteSpace(claimsConnection)))

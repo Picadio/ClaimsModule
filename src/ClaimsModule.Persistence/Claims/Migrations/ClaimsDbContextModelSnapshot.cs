@@ -164,6 +164,14 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<DateTimeOffset?>("LastSlaBreachAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
                     b.Property<Guid>("OrganizationEntityId")
                         .HasColumnType("uniqueidentifier");
 
@@ -185,6 +193,13 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("rowversion");
 
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)")
+                        .HasDefaultValue("Standard");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -204,7 +219,88 @@ namespace ClaimsModule.Persistence.Claims.Migrations
 
                     b.HasIndex("OrganizationEntityId", "PolicyId");
 
+                    b.HasIndex("OrganizationEntityId", "Status", "Id");
+
                     b.ToTable("Claims", (string)null);
+                });
+
+            modelBuilder.Entity("ClaimsModule.Domain.Claims.ClaimDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWSEQUENTIALID()");
+
+                    b.Property<Guid>("ClaimId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("DocumentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("OrganizationEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<string>("StorageProvider")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationEntityId", "StorageKey")
+                        .IsUnique();
+
+                    b.HasIndex("OrganizationEntityId", "ClaimId", "CreatedAt");
+
+                    b.ToTable("ClaimDocuments", (string)null);
                 });
 
             modelBuilder.Entity("ClaimsModule.Domain.Claims.ClaimParty", b =>
@@ -911,6 +1007,66 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
+            modelBuilder.Entity("ClaimsModule.Persistence.Claims.ClaimMutationSubmission", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWSEQUENTIALID()");
+
+                    b.Property<Guid>("ClaimId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("KeyHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<Guid>("OrganizationEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("ResponseJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationEntityId", "ClaimId", "CreatedByUserId", "KeyHash")
+                        .IsUnique();
+
+                    b.ToTable("ClaimMutationSubmissions", (string)null);
+                });
+
             modelBuilder.Entity("ClaimsModule.Persistence.Claims.ClaimNumberCounter", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1282,6 +1438,16 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
                 });
 
+            modelBuilder.Entity("ClaimsModule.Domain.Claims.ClaimDocument", b =>
+                {
+                    b.HasOne("ClaimsModule.Domain.Claims.Claim", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationEntityId", "ClaimId")
+                        .HasPrincipalKey("OrganizationEntityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("ClaimsModule.Domain.Claims.ClaimParty", b =>
                 {
                     b.HasOne("ClaimsModule.Domain.Claims.Claim", null)
@@ -1356,6 +1522,16 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                 });
 
             modelBuilder.Entity("ClaimsModule.Persistence.Claims.ClaimAuditEntry", b =>
+                {
+                    b.HasOne("ClaimsModule.Domain.Claims.Claim", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationEntityId", "ClaimId")
+                        .HasPrincipalKey("OrganizationEntityId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("ClaimsModule.Persistence.Claims.ClaimMutationSubmission", b =>
                 {
                     b.HasOne("ClaimsModule.Domain.Claims.Claim", null)
                         .WithMany()

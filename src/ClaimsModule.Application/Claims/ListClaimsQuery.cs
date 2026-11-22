@@ -20,7 +20,11 @@ public sealed record ListClaimsQuery : IRequest<ClaimPage>
 public sealed record ClaimPage(IReadOnlyList<ClaimSummary> Items, int Page, int PageSize, int TotalCount);
 
 public sealed record ClaimSummary(Guid Id, string ClaimNumber, string? ClientName, string? PolicyNumber,
-    DateTimeOffset LossDate, string CauseOfLossCode, ClaimStatus Status, decimal TotalReserves, Guid? AssignedHandlerId);
+    DateTimeOffset LossDate, string CauseOfLossCode, ClaimStatus Status, decimal TotalReserves, Guid? AssignedHandlerId)
+{
+    public bool IsSlaBreached { get; init; }
+    public DateTimeOffset? LastSlaBreachAt { get; init; }
+}
 
 internal sealed class ListClaimsHandler(IClaimStore store) : IRequestHandler<ListClaimsQuery, ClaimPage>
 {

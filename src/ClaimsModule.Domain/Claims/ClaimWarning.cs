@@ -5,6 +5,7 @@ namespace ClaimsModule.Domain.Claims;
 public sealed class ClaimWarning : OrganizationRecord
 {
     internal const string OutsidePolicyPeriod = "LOSS_OUTSIDE_POLICY_PERIOD";
+    public const string UnknownPolicy = "POLICY_UNKNOWN";
 
     public Guid ClaimId { get; private set; }
     public string Code { get; private set; } = null!;
@@ -22,4 +23,6 @@ public sealed class ClaimWarning : OrganizationRecord
         Field = field;
         Message = message;
     }
+
+    internal void Resolve(Guid actorId, DateTimeOffset now) => MarkDeleted(actorId, now);
 }

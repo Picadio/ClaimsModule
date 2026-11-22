@@ -82,7 +82,7 @@ internal sealed class SubmitReserveHandler(IReserveStore reserves, IClaimStore c
             }
 
             var now = clock.GetUtcNow();
-            claim.RecordReserveActivity(user.UserId, now);
+            claim.RecordActivity(user.UserId, now);
             await unitOfWork.SaveAsync(token);
 
             var result = await writer.SubmitAsync(claim, component, component?.ComponentType ?? request.Component!.Value,

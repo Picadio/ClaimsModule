@@ -17,6 +17,26 @@ internal sealed class SqlClaimStore(ClaimsDbContext db, TimeProvider clock) : IC
         .AsSplitQuery()
         .SingleOrDefaultAsync(row => row.Id == id, cancellationToken);
 
+    public Task<Claim?> FindForWriteAsync(Guid id, CancellationToken cancellationToken) =>
+        db.Set<Claim>().SingleOrDefaultAsync(row => row.Id == id, cancellationToken);
+
+    public async Task<IReadOnlyList<Guid>> ListSlaCandidatesAsync(DateTimeOffset now, Guid? afterId, int pageSize,
+        CancellationToken cancellationToken)
+    {
+        var cutoff = now.AddHours(-ClaimSla.InactivityHours);
+        var repeat = now.AddHours(-ClaimSla.RepeatHours);
+        var candidates = db.Set<Claim>().Where(row =>
+            (row.Status == ClaimStatus.Draft || row.Status == ClaimStatus.Open) &&
+            (row.UpdatedAt ?? row.CreatedAt) < cutoff &&
+            (row.LastSlaBreachAt == null || row.LastSlaBreachAt <= repeat));
+        if (afterId is Guid cursor)
+        {
+            candidates = candidates.Where(row => row.Id.CompareTo(cursor) > 0);
+        }
+
+        return await candidates.OrderBy(row => row.Id).Select(row => row.Id).Take(pageSize).ToListAsync(cancellationToken);
+    }
+
     public async Task<ClaimPage> ListAsync(ListClaimsQuery request, CancellationToken cancellationToken)
     {
         var claims = db.Set<Claim>().AsNoTracking();
@@ -60,6 +80,7 @@ internal sealed class SqlClaimStore(ClaimsDbContext db, TimeProvider clock) : IC
         }
 
         var totalCount = await claims.CountAsync(cancellationToken);
+        var slaCutoff = clock.GetUtcNow().AddHours(-ClaimSla.InactivityHours);
         var rows = await claims
             .OrderByDescending(row => row.CreatedAt)
             .ThenByDescending(row => row.Id)
@@ -68,7 +89,13 @@ internal sealed class SqlClaimStore(ClaimsDbContext db, TimeProvider clock) : IC
             .Select(row => new ClaimSummary(row.Id, row.ClaimNumber, row.ClientName, row.PolicyNumber,
                 row.LossEvent.LossDate, row.LossEvent.CauseOfLossCode, row.Status,
                 db.Set<ClaimReserveComponent>().Where(component => component.ClaimId == row.Id)
-                    .Sum(component => component.CurrentAmount), row.AssignedHandlerId))
+                    .Sum(component => component.CurrentAmount), row.AssignedHandlerId)
+            {
+                LastSlaBreachAt = row.LastSlaBreachAt,
+                IsSlaBreached = (row.Status == ClaimStatus.Draft || row.Status == ClaimStatus.Open) &&
+                    (row.UpdatedAt ?? row.CreatedAt) < slaCutoff &&
+                    row.LastSlaBreachAt >= (row.UpdatedAt ?? row.CreatedAt)
+            })
             .ToListAsync(cancellationToken);
 
         return new ClaimPage(rows, request.Page, request.PageSize, totalCount);

@@ -1,5 +1,6 @@
 using ClaimsModule.API.Correlation;
 using ClaimsModule.Application.Claims;
+using ClaimsModule.Domain.Claims;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -29,7 +30,14 @@ public sealed class ClaimsController(ISender sender) : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = claim.Id }, claim);
     }
 
+    [HttpPost("validate")]
+    [ProducesResponseType<FnolValidationResult>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    public Task<FnolValidationResult> ValidateFnol(CreateClaimRequest request, CancellationToken cancellationToken) =>
+        sender.Send(new ValidateFnolQuery(request), cancellationToken);
+
     [HttpGet("{id:guid}")]
+    [ResponseCache(NoStore = true)]
     [ProducesResponseType<ClaimDetail>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ClaimDetail>> GetById(Guid id, CancellationToken cancellationToken)
@@ -61,5 +69,57 @@ public sealed class ClaimsController(ISender sender) : ControllerBase
         var query = new ListClaimAuditQuery { ClaimId = id, Page = page, PageSize = pageSize };
         var audit = await sender.Send(query, cancellationToken);
         return audit is null ? NotFound() : Ok(audit);
+    }
+
+    [HttpPost("{id:guid}/parties")]
+    [ProducesResponseType<ClaimPartyDto>(StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ClaimPartyDto>> AddParty(Guid id, PartyDetails request,
+        [FromHeader(Name = "Idempotency-Key")] string? key, CancellationToken cancellationToken)
+    {
+        var result = await sender.Send(new AddClaimPartyCommand(id, request, key,
+            RequestCorrelation.Read(HttpContext)), cancellationToken);
+        return result is null ? NotFound() : CreatedAtAction(nameof(GetById), new { id }, result);
+    }
+
+    [HttpDelete("{id:guid}/parties/{partyId:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> RemoveParty(Guid id, Guid partyId,
+        [FromHeader(Name = "Idempotency-Key")] string? key, CancellationToken cancellationToken)
+    {
+        var result = await sender.Send(new RemoveClaimPartyCommand(id, partyId, key,
+            RequestCorrelation.Read(HttpContext)), cancellationToken);
+        return result is null ? NotFound() : NoContent();
+    }
+
+    [HttpPut("{id:guid}/notes")]
+    [ProducesResponseType<ClaimNotesResult>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ClaimNotesResult>> UpdateNotes(Guid id, UpdateClaimNotesRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string? key, CancellationToken cancellationToken)
+    {
+        var result = await sender.Send(new UpdateClaimNotesCommand(id, request, key,
+            RequestCorrelation.Read(HttpContext)), cancellationToken);
+        return result is null ? NotFound() : Ok(result);
+    }
+
+    [HttpPut("{id:guid}/policy")]
+    [ProducesResponseType<ClaimPolicyResult>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<ClaimPolicyResult>> LinkPolicy(Guid id, LinkClaimPolicyRequest request,
+        [FromHeader(Name = "Idempotency-Key")] string? key, CancellationToken cancellationToken)
+    {
+        var result = await sender.Send(new LinkClaimPolicyCommand(id, request, key,
+            RequestCorrelation.Read(HttpContext)), cancellationToken);
+        return result is null ? NotFound() : Ok(result);
     }
 }

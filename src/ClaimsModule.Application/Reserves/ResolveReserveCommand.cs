@@ -55,7 +55,7 @@ internal sealed class ResolveReserveHandler(IReserveStore reserves, IClaimStore 
                 _ => ReserveApprovalAuthority.Automatic
             };
             var now = clock.GetUtcNow();
-            claim.RecordReserveActivity(user.UserId, now);
+            claim.RecordActivity(user.UserId, now);
             await unitOfWork.SaveAsync(token);
 
             var previousBalance = component.CurrentAmount;

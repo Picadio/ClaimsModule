@@ -18,9 +18,13 @@ internal sealed class ClaimModelConfiguration :
         claim.Property(row => row.ClaimNumber).HasMaxLength(50);
         claim.Property(row => row.ClaimType).HasMaxLength(50);
         claim.Property(row => row.Status).HasConversion<string>().HasMaxLength(50);
+        claim.Property(row => row.Severity).HasConversion<string>().HasMaxLength(30).HasDefaultValue(ClaimSeverity.Standard);
+        claim.Property(row => row.Notes).HasMaxLength(4000);
         claim.Property(row => row.PolicyNumber).HasMaxLength(50);
         claim.Property(row => row.ClientName).HasMaxLength(255);
         claim.Property(row => row.ClosedAt).HasPrecision(7);
+        claim.Property(row => row.LastSlaBreachAt).HasPrecision(7);
+        claim.HasIndex(row => new { row.OrganizationEntityId, row.Status, row.Id });
         claim.Property(row => row.ClosureReason).HasMaxLength(2000);
         claim.Property(row => row.ReserveLimitOverrideEnabled).HasDefaultValue(false);
         claim.Property<byte[]>("RowVer").IsRequired().IsRowVersion();

@@ -32,4 +32,10 @@ public sealed class ClaimParty : OrganizationRecord
         Notes = details.Notes?.Trim();
         IsActive = true;
     }
+
+    internal void Deactivate(Guid actorId, DateTimeOffset now)
+    {
+        IsActive = false;
+        MarkUpdated(actorId, now);
+    }
 }

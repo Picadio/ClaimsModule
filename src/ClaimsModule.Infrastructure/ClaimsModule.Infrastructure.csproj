@@ -8,9 +8,11 @@
 
     <ItemGroup>
         <PackageReference Include="Hangfire.AspNetCore" Version="1.8.25" />
+        <PackageReference Include="Azure.Storage.Blobs" Version="12.30.2" />
         <PackageReference Include="Hangfire.SqlServer" Version="1.8.25" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
         <ProjectReference Include="../ClaimsModule.Application/ClaimsModule.Application.csproj" />
+        <InternalsVisibleTo Include="ClaimsModule.IntegrationTests" />
     </ItemGroup>
 
 </Project>

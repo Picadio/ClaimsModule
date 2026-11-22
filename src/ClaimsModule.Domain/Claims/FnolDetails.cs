@@ -1,7 +1,7 @@
 namespace ClaimsModule.Domain.Claims;
 
 public sealed record FnolDetails(string ClaimType, LossDetails LossEvent, IReadOnlyList<PartyDetails> Parties,
-    IReadOnlyList<RiskDetails> RiskObjects);
+    IReadOnlyList<RiskDetails> RiskObjects, ClaimSeverity Severity = ClaimSeverity.Standard);
 
 public sealed record LossDetails(DateTimeOffset LossDate, string CauseOfLossCode, string LossDescription,
     string? LossLocation = null, decimal? EstimatedLossAmount = null, string? PoliceReportNumber = null);
@@ -17,6 +17,7 @@ public sealed record LinkedPolicy(Guid Id, string PolicyNumber, string ClientNam
     DateOnly ExpirationDate);
 
 public enum ClaimStatus { Draft, Open, UnderInvestigation, PendingPayment, Closed, Reopened, Withdrawn }
+public enum ClaimSeverity { Standard, Minor, Critical, Catastrophic }
 public enum ClaimPartyRole { Claimant = 1, Insured, ThirdParty, Witness, Attorney }
 public enum ClaimPartyType { Person = 1, Company }
 public enum RiskAssetType { Vehicle = 1, Property, Person, Equipment, Other }

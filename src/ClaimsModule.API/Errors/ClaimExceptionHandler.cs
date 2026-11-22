@@ -11,6 +11,8 @@ internal sealed class ClaimExceptionHandler : IExceptionHandler
     {
         var result = exception switch
         {
+            DocumentStorageUnavailableException storage => Results.Problem(title: "Document storage unavailable",
+                detail: storage.Message, statusCode: StatusCodes.Status503ServiceUnavailable, type: "DocumentStorageUnavailable"),
             ValidationException validation => ValidationProblem(validation.Errors
                 .GroupBy(error => error.PropertyName.Replace("Request.", "", StringComparison.Ordinal))
                 .ToDictionary(group => group.Key, group => group.Select(error => error.ErrorMessage).Distinct().ToArray())),

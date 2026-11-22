@@ -28,4 +28,11 @@ public abstract class OrganizationRecord
         UpdatedByUserId = actorId;
         UpdatedAt = occurredAt.ToUniversalTime();
     }
+
+    protected void MarkDeleted(Guid actorId, DateTimeOffset occurredAt)
+    {
+        IsDeleted = true;
+        DeletedAt = occurredAt.ToUniversalTime();
+        MarkUpdated(actorId, occurredAt);
+    }
 }

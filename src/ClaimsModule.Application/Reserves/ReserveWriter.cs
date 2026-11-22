@@ -8,6 +8,8 @@ namespace ClaimsModule.Application.Reserves;
 
 internal sealed class ReserveWriter(IReserveStore store, IClaimUnitOfWork unitOfWork, IPublisher publisher)
 {
+    public static ReserveChange InitialChange(decimal amount) => new(ReserveTransactionType.Add, amount, "Initial reserve at FNOL.");
+
     public async Task<ReserveTransaction> SubmitAsync(Claim claim, ClaimReserveComponent? component,
         ReserveComponentType componentType, ReserveChange change, Guid actorId, DateTimeOffset occurredAt,
         Guid correlationId, int auditPosition, CancellationToken cancellationToken, ReserveHistory? replaces = null)

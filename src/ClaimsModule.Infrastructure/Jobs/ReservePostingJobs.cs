@@ -27,6 +27,7 @@ public static class ReservePostingJobs
         services.AddScoped<IReservePostingQueue, HangfireReservePostingQueue>();
         services.AddTransient<INotificationHandler<ReservePostingReady>, DispatchAfterApproval>();
         services.AddHostedService<ReservePostingRecovery>();
+        services.AddHostedService<SlaJobRegistration>();
         return services;
     }
 }
