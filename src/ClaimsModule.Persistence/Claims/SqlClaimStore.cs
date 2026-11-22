@@ -37,7 +37,7 @@ internal sealed class SqlClaimStore(ClaimsDbContext db, TimeProvider clock) : IC
         return await candidates.OrderBy(row => row.Id).Select(row => row.Id).Take(pageSize).ToListAsync(cancellationToken);
     }
 
-    public async Task<ClaimPage> ListAsync(ListClaimsQuery request, CancellationToken cancellationToken)
+    public async Task<ClaimPage> ListAsync(ListClaimsQuery request, IReadOnlyList<Guid>? handlerIds, CancellationToken cancellationToken)
     {
         var claims = db.Set<Claim>().AsNoTracking();
 
@@ -61,6 +61,11 @@ internal sealed class SqlClaimStore(ClaimsDbContext db, TimeProvider clock) : IC
         if (request.AssignedHandlerId is { } handlerId)
         {
             claims = claims.Where(row => row.AssignedHandlerId == handlerId);
+        }
+
+        if (handlerIds is not null)
+        {
+            claims = claims.Where(row => row.AssignedHandlerId.HasValue && handlerIds.Contains(row.AssignedHandlerId.Value));
         }
 
         if (request.PolicyId is { } policyId)

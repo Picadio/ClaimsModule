@@ -30,6 +30,7 @@ public sealed class ClaimsDbContext(DbContextOptions<ClaimsDbContext> options, I
         ConfigureRecord<ClaimReserveComponent>(modelBuilder);
         ConfigureRecord<ReserveHistory>(modelBuilder);
         ConfigureRecord<ReserveSubmission>(modelBuilder);
+        ConfigureRecord<ApplicationUser>(modelBuilder);
 
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ClaimsDbContext).Assembly);
         ReferenceSeeds.Apply(modelBuilder);

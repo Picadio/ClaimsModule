@@ -61,7 +61,7 @@ internal sealed class ChangeClaimStatusHandler(IClaimLifecycleStore lifecycle, I
                 throw new ClaimRuleViolation(issue.Field, issue.Message);
             }
 
-            if (request.AssignedHandlerId is Guid handler && !handlers.IsHandler(user.OrganizationEntityId, handler))
+            if (request.AssignedHandlerId is Guid handler && !await handlers.IsHandlerAsync(user.OrganizationEntityId, handler, token))
             {
                 throw new ClaimRuleViolation("AssignedHandlerId", "Select a handler from this organization.");
             }

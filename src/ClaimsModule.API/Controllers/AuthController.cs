@@ -15,14 +15,14 @@ public sealed class AuthController(DemoTokenIssuer demoTokens, ICurrentUser curr
     [EnableRateLimiting(AuthenticationExtensions.DemoLoginRateLimit)]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     [HttpPost("demo-token")]
-    public ActionResult<DemoTokenResponse> IssueDemoToken(DemoTokenRequest request)
+    public async Task<ActionResult<DemoTokenResponse>> IssueDemoToken(DemoTokenRequest request, CancellationToken cancellationToken)
     {
         if (!demoTokens.Enabled)
         {
             return NotFound();
         }
 
-        var token = demoTokens.Issue(request.Username, request.Password);
+        var token = await demoTokens.IssueAsync(request.Username, request.Password, cancellationToken);
         return token is null ? Unauthorized() : Ok(token);
     }
 

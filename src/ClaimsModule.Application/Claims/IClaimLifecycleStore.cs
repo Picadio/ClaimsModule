@@ -14,8 +14,8 @@ public interface IClaimLifecycleStore
 
 public interface IClaimHandlerDirectory
 {
-    bool IsHandler(Guid organizationId, Guid userId);
-    Guid? FindByName(Guid organizationId, string name);
+    Task<bool> IsHandlerAsync(Guid organizationId, Guid userId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Guid>> FindByNameAsync(Guid organizationId, string name, CancellationToken cancellationToken);
 }
 
 public sealed record StoredStatusChange(Guid ActorId, DateTimeOffset OccurredAt, string KeyHash, string RequestHash,

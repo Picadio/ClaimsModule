@@ -1,6 +1,9 @@
 using System.Security.Cryptography;
 using ClaimsModule.API.Controllers;
 using ClaimsModule.Application.Security;
+using ClaimsModule.Application.Claims;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -20,6 +23,8 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
     private readonly bool allowDirectClosure;
     private readonly bool glJobsEnabled;
     private readonly string? handlerDisplayName;
+    private readonly bool useDatabaseUsers;
+    private readonly string? legacyHandlerId;
     private readonly Dictionary<string, DemoAccount> accounts =
         new[] { UserRoles.Handler, UserRoles.Supervisor, UserRoles.Manager }
             .ToDictionary(role => role, _ => new DemoAccount(Guid.NewGuid(), RandomSecret()));
@@ -33,7 +38,8 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
 
     internal ClaimsApiFactory(bool demoEnabled, string? environment = null,
         string? claimsConnection = null, Guid? organizationId = null, bool openApiEnabled = false,
-        bool allowDirectClosure = false, bool glJobsEnabled = false, string? handlerDisplayName = null)
+        bool allowDirectClosure = false, bool glJobsEnabled = false, string? handlerDisplayName = null,
+        bool useDatabaseUsers = false, string? legacyHandlerId = null)
     {
         this.demoEnabled = demoEnabled;
         this.environment = environment ?? Environments.Development;
@@ -42,6 +48,8 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
         this.allowDirectClosure = allowDirectClosure;
         this.glJobsEnabled = glJobsEnabled;
         this.handlerDisplayName = handlerDisplayName;
+        this.useDatabaseUsers = useDatabaseUsers;
+        this.legacyHandlerId = legacyHandlerId;
         OrganizationId = organizationId ?? Guid.NewGuid();
     }
 
@@ -66,15 +74,9 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
             ["Jobs:Enabled"] = glJobsEnabled.ToString(),
             ["Claims:AllowDirectClosure"] = allowDirectClosure.ToString()
         };
-        foreach (var (role, account) in accounts)
+        if (legacyHandlerId is not null)
         {
-            settings[$"Authentication:Demo:Accounts:{role}:UserId"] = account.UserId.ToString("D");
-            settings[$"Authentication:Demo:Accounts:{role}:Password"] = account.Password;
-        }
-
-        if (handlerDisplayName is not null)
-        {
-            settings[$"Authentication:Demo:Accounts:{UserRoles.Handler}:DisplayName"] = handlerDisplayName;
+            settings[$"Authentication:Demo:Accounts:{UserRoles.Handler}:UserId"] = legacyHandlerId;
         }
 
         if (claimsConnection is not null)
@@ -92,6 +94,14 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
     {
         builder.ConfigureTestServices(services =>
         {
+            if (!useDatabaseUsers)
+            {
+                services.RemoveAll<IUserStore>();
+                services.RemoveAll<IClaimHandlerDirectory>();
+                var directory = new TestUserStore(OrganizationId, accounts, handlerDisplayName ?? "Handler");
+                services.AddSingleton<IUserStore>(directory);
+                services.AddSingleton<IClaimHandlerDirectory>(directory);
+            }
             services.AddDataProtection().UseEphemeralDataProtectionProvider();
             services.AddControllers().AddApplicationPart(typeof(AuthorizationTestController).Assembly);
         });
@@ -100,4 +110,25 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
     private static string RandomSecret() => Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
 
     internal sealed record DemoAccount(Guid UserId, string Password);
+
+    private sealed class TestUserStore(Guid organizationId, Dictionary<string, DemoAccount> accounts, string handlerName)
+        : IUserStore, IClaimHandlerDirectory
+    {
+        private readonly PasswordHasher<string> hasher = new();
+
+        public Task<StoredUser?> FindForLoginAsync(Guid organization, string name, CancellationToken cancellationToken)
+        {
+            var pair = accounts.FirstOrDefault(item => item.Key.ToUpperInvariant() == name);
+            return Task.FromResult(organization == organizationId && pair.Value is not null
+                ? new StoredUser(pair.Value.UserId, organizationId, pair.Key, pair.Key, hasher.HashPassword(pair.Key, pair.Value.Password))
+                : null);
+        }
+
+        public Task<bool> IsHandlerAsync(Guid organization, Guid userId, CancellationToken cancellationToken) =>
+            Task.FromResult(organization == organizationId && accounts[UserRoles.Handler].UserId == userId);
+
+        public Task<IReadOnlyList<Guid>> FindByNameAsync(Guid organization, string name, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<Guid>>(organization == organizationId && handlerName.Contains(name, StringComparison.OrdinalIgnoreCase)
+                ? [accounts[UserRoles.Handler].UserId] : []);
+    }
 }

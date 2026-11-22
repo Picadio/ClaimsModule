@@ -23,15 +23,15 @@ Wait for SQL Server to accept connections. The migrations create the schema and 
 dotnet tool install dotnet-ef --global --version 9.0.23
 dotnet ef database update --project src/ClaimsModule.Persistence --startup-project src/ClaimsModule.API --context ClaimsDbContext
 
-foreach ($role in 'handler', 'supervisor', 'manager') {
-    $password = Read-Host "Demo $role password" -MaskInput
-    [Environment]::SetEnvironmentVariable("Authentication__Demo__Accounts__${role}__Password", $password)
-}
 dotnet dev-certs https --trust
 dotnet run --project src/ClaimsModule.API --launch-profile https
 ```
 
 Open [local Swagger](https://localhost:7273/swagger/index.html) or the [local OpenAPI document](https://localhost:7273/openapi/v1.json). In Swagger, use `POST /api/auth/demo-token` with `username` and `password`, then authorize with the response's `accessToken`. `GET /api/auth/me` returns the current user and organization IDs. Development enables demo login and generates a JWT signing key at startup if none is configured. With that generated key, restarting the API invalidates existing tokens.
+
+The migration seeds three demo users named `handler`, `supervisor`, and `manager`, each with password `1`. The database stores salted password hashes. Demo login uses the configured `Authentication__Demo__OrganizationEntityId` to select the tenant. The former `Authentication__Demo__Accounts__*` settings no longer control account IDs or passwords.
+
+If the previous deployment used custom `Authentication__Demo__Accounts__<role>__UserId` values, retain those settings during migration. Before enabling the new login, an administrator must update the corresponding seeded `Users.Id` values to the prior actor IDs and verify existing claim assignments and reserve ownership. Then remove the legacy ID overrides. The application rejects mismatched overrides at startup while demo login is enabled. If overrides were removed before upgrading, compare historical actor IDs before enabling login, since the application cannot detect removed settings.
 
 ## Configuration and deployment
 
@@ -43,14 +43,14 @@ Open [local Swagger](https://localhost:7273/swagger/index.html) or the [local Op
 | `Jobs__Enabled` | Enables GL posting and SLA monitoring. Defaults to enabled when a claims connection is configured. |
 | `Jobs__OrganizationEntityIds__0` | First tenant serviced by background jobs. Defaults to the configured demo tenant when the list is absent. |
 | `Authentication__Jwt__SigningKey` | Required outside Development. Use a Base64-encoded value of at least 32 random bytes. |
-| `Authentication__Demo__Enabled` | Set to `true` for the deployed demo. Set a separate `Authentication__Demo__Accounts__<role>__Password` for each account. |
-| `Authentication__Demo__Accounts__handler__DisplayName` | Name used by the tenant's handler text filter. Defaults to `Handler`. |
+| `Authentication__Demo__Enabled` | Set to `true` for the deployed demo. |
+| `Authentication__Demo__OrganizationEntityId` | Tenant used to locate login accounts. Defaults to the seeded demo tenant. |
 | `OpenApi__Enabled` | Set to `true` in Azure for public access to Swagger and OpenAPI. |
 | `Claims__AllowDirectClosure` | Enables `Open → Closed`. Defaults to `false`. |
 | `StorageProvider`, `ConnectionStrings__Blob` | In Azure, set `StorageProvider=AzureBlob` and configure the Blob connection so it can issue read SAS URLs. The `claim-documents` container must be private. |
 | `Storage__LocalRoot` | Local document root. Defaults to `uploads` under the API content root. Development uses local storage when no Blob connection is configured. |
 
-The [Azure workflow](.github/workflows/master_claimsmodule.yml) publishes the API and applies its EF migration bundle in App Service. After migration, use [ConfigureClaimsAuditRuntime.sql](deploy/ConfigureClaimsAuditRuntime.sql) to enroll the non-owner API user in `ClaimsAuditWriter`. Give that user the permissions needed to operate the business tables. The audit role grants `SELECT` and `INSERT` on `ClaimAuditLog` and denies `UPDATE` and `DELETE`. Store connection strings, the JWT signing key, and demo passwords in deployment secrets or App Service settings.
+The [Azure workflow](.github/workflows/master_claimsmodule.yml) publishes the API and applies its EF migration bundle in App Service. After migration, use [ConfigureClaimsAuditRuntime.sql](deploy/ConfigureClaimsAuditRuntime.sql) to enroll the non-owner API user in `ClaimsAuditWriter`. Give that user the permissions needed to operate the business tables, including SELECT on Users. The audit role grants `SELECT` and `INSERT` on `ClaimAuditLog` and denies `UPDATE` and `DELETE`. Store connection strings and the JWT signing key in deployment secrets or App Service settings.
 
 [Azure Swagger](https://claimsmodule-e3hshfhjh3csd3d6.spaincentral-01.azurewebsites.net/swagger/index.html) · [Azure OpenAPI](https://claimsmodule-e3hshfhjh3csd3d6.spaincentral-01.azurewebsites.net/openapi/v1.json)
 

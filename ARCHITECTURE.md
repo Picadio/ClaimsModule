@@ -27,14 +27,14 @@ shortcut can be enabled with `Claims__AllowDirectClosure=true` and uses the same
 closure checks as the other routes. It is disabled by default.
 
 When opening a Draft, pass the configured handler's `assignedHandlerId` if
-the claim has no assignment. The demo directory resolves that ID within the
-configured organization. A loss outside the policy period requires
+the claim has no assignment. The handler directory resolves that ID from the
+tenant-filtered Users table. A loss outside the policy period requires
 `acknowledgePolicyPeriodWarning: true` and records the acknowledgment in the
 same transaction. Other FNOL warnings remain informational. Opening and closure
 recheck the critical intake conditions against current data. FNOL rejects
 critical input before persistence, so this slice has no stored critical issues.
-Handler-name matching resolves the configured `DisplayName` to the existing
-assignment ID before applying SQL pagination. An explicit `assignedHandlerId`
+Handler-name matching resolves user display names to assignment IDs before
+applying SQL pagination. An explicit `assignedHandlerId`
 also has to match when supplied.
 
 `PendingPayment` requires an approved reserve. Coming from

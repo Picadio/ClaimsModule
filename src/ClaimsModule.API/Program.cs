@@ -38,7 +38,6 @@ if (builder.Configuration.GetValue("Jobs:Enabled", !string.IsNullOrWhiteSpace(cl
     builder.Services.AddReservePostingJobs(builder.Configuration.GetConnectionString("Hangfire") ?? claimsConnection, organizations);
 }
 builder.Services.AddSingleton(new ClaimLifecycleOptions(builder.Configuration.GetValue<bool>("Claims:AllowDirectClosure")));
-builder.Services.AddSingleton<IClaimHandlerDirectory, DemoClaimHandlerDirectory>();
 builder.AddClaimsAuthentication();
 
 var app = builder.Build();

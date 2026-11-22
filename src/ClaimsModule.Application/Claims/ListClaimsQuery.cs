@@ -31,20 +31,19 @@ public sealed record ClaimSummary(Guid Id, string ClaimNumber, string? ClientNam
 internal sealed class ListClaimsHandler(IClaimStore store, IClaimHandlerDirectory handlers, ICurrentUser currentUser)
     : IRequestHandler<ListClaimsQuery, ClaimPage>
 {
-    public Task<ClaimPage> Handle(ListClaimsQuery request, CancellationToken cancellationToken)
+    public async Task<ClaimPage> Handle(ListClaimsQuery request, CancellationToken cancellationToken)
     {
+        IReadOnlyList<Guid>? handlerIds = null;
         if (request.AssignedHandlerName?.Trim() is { Length: > 0 } name)
         {
-            var handlerId = handlers.FindByName(currentUser.Identity.OrganizationEntityId, name);
-            if (handlerId is null || (request.AssignedHandlerId.HasValue && request.AssignedHandlerId != handlerId))
+            handlerIds = await handlers.FindByNameAsync(currentUser.Identity.OrganizationEntityId, name, cancellationToken);
+            if (handlerIds.Count == 0 || (request.AssignedHandlerId.HasValue && !handlerIds.Contains(request.AssignedHandlerId.Value)))
             {
-                return Task.FromResult(new ClaimPage([], request.Page, request.PageSize, 0));
+                return new ClaimPage([], request.Page, request.PageSize, 0);
             }
-
-            request = request with { AssignedHandlerId = handlerId };
         }
 
-        return store.ListAsync(request, cancellationToken);
+        return await store.ListAsync(request, handlerIds, cancellationToken);
     }
 }
 

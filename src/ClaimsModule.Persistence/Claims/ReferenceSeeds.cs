@@ -12,6 +12,10 @@ internal static class ReferenceSeeds
 
     public static void Apply(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<ApplicationUser>().HasData(
+            User("76352da5-cc3f-49c0-8caf-149e6f51c4ec", "handler", "AQAAAAIAAYagAAAAEPCPZSt0N3U3KaXk74vwFlf7wGlpXgt0mGlfeHrU80OtvfkYt0Lhl7Z9h1v6qQuS9g=="),
+            User("c274bc9c-934e-4910-a759-f1afbef3e46f", "supervisor", "AQAAAAIAAYagAAAAEOtsbROcow/shg2MTZj00pcr78rJaL3kgwEl2VGkC2TwZi96KGTnJdr2nyVO1Fwxfw=="),
+            User("a257d183-69ee-494a-84c3-5ce2215a26ab", "manager", "AQAAAAIAAYagAAAAENmVffbF5Cln+lQtKt8pQgBtYk9YPDiM0/fJpLg2miO8rFZ28TUmByixPKk6krJimw=="));
         modelBuilder.Entity<Policy>().HasData(
             Policy(1, "POL-2024-001001", "Meridian Transport LLC", new DateOnly(2024, 1, 1),
                 new DateOnly(2026, 12, 31), "Active", "Vehicle,Cargo"),
@@ -52,6 +56,13 @@ internal static class ReferenceSeeds
             new(ClaimStatus.Reopened, ClaimStatus.Open, ClaimTransitionRule.SystemOnly)
         });
     }
+
+    private static object User(string id, string role, string hash) => new
+    {
+        Id = Guid.Parse(id), OrganizationEntityId = DemoOrganizationId, CreatedAt = SeededAt,
+        IsDeleted = false, UserName = role, NormalizedUserName = role.ToUpperInvariant(),
+        DisplayName = role, Role = role, PasswordHash = hash
+    };
 
     private static object Policy(int source, string number, string client, DateOnly effective, DateOnly expiration,
         string status, string coverages) => new

@@ -65,6 +65,16 @@ public sealed class AuthenticationTests(ClaimsApiFactory factory) : IClassFixtur
     }
 
     [Fact]
+    public void DemoLoginRejectsMismatchedLegacyUserIdAtStartup()
+    {
+        using var api = new ClaimsApiFactory(demoEnabled: true, legacyHandlerId: Guid.NewGuid().ToString("D"));
+
+        var error = Assert.Throws<InvalidOperationException>(() => api.CreateApiClient());
+
+        Assert.Contains("Legacy demo user IDs differ from seeded IDs", error.Message);
+    }
+
+    [Fact]
     public async Task DemoTokenLimitsRepeatedLoginAttempts()
     {
         await using var rateLimitFactory = new ClaimsApiFactory();

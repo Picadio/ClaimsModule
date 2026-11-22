@@ -8,7 +8,7 @@ public interface IClaimStore
     Task<Claim?> FindForWriteAsync(Guid id, CancellationToken cancellationToken);
     Task<IReadOnlyList<Guid>> ListSlaCandidatesAsync(DateTimeOffset now, Guid? afterId, int pageSize,
         CancellationToken cancellationToken);
-    Task<ClaimPage> ListAsync(ListClaimsQuery query, CancellationToken cancellationToken);
+    Task<ClaimPage> ListAsync(ListClaimsQuery query, IReadOnlyList<Guid>? handlerIds, CancellationToken cancellationToken);
     Task<LinkedPolicy?> FindPolicyAsync(Guid id, CancellationToken cancellationToken);
     Task<bool> IsCauseActiveAsync(string code, CancellationToken cancellationToken);
     Task<int> NextSequenceAsync(int year, CancellationToken cancellationToken);
