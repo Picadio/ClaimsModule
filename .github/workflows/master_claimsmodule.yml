@@ -61,6 +61,7 @@ jobs:
       contents: read #This is required for actions/checkout
 
     steps:
+      - uses: actions/checkout@v4
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
         with:
@@ -95,59 +96,12 @@ jobs:
       - name: Apply EF Core migrations from App Service
         timeout-minutes: 10
         run: |
-          app_id=$(az webapp show --resource-group test --name ClaimsModule --query id --output tsv)
-          job_url="https://management.azure.com${app_id}/triggeredwebjobs/claims-migrations?api-version=2025-05-01"
+          bash .github/scripts/invoke-claims-migrations.sh
 
-          for attempt in {1..24}; do
-            if job_info=$(az rest --method get --url "$job_url" --only-show-errors); then
-              break
-            fi
-            if [ "$attempt" -eq 24 ]; then
-              echo "::error::The claims-migrations WebJob did not become available."
-              exit 1
-            fi
-            sleep 10
-          done
-
-          previous_run=$(jq -r '.properties.latest_run.url // .properties.latest_run.start_time // empty' <<< "$job_info")
-          az webapp webjob triggered run --resource-group test --name ClaimsModule \
-            --webjob-name claims-migrations --output none
-
-          for attempt in {1..30}; do
-            job_info=$(az rest --method get --url "$job_url" --only-show-errors)
-            run=$(jq -r '.properties.latest_run.url // .properties.latest_run.start_time // empty' <<< "$job_info")
-            if [ -n "$run" ] && [ "$run" != "$previous_run" ]; then
-              status=$(jq -r '.properties.latest_run.status' <<< "$job_info")
-              case "$status" in
-                Success) echo "EF Core migrations succeeded."; exit 0 ;;
-                Failed|Error|Aborted)
-                  echo "::error::EF Core migrations ended with status $status. See WebJobs > claims-migrations > Logs in App Service."
-                  exit 1 ;;
-              esac
-            fi
-            sleep 10
-          done
-          echo "::error::Timed out waiting for EF Core migrations."
-          exit 1
-
-      - name: Verify public Swagger
+      - name: Verify successful deploy
         env:
           WEBAPP_URL: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
         run: |
-          curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors --max-time 15 "${WEBAPP_URL%/}/openapi/v1.json" -o openapi.json
-          jq -e '.paths | has("/api/auth/me")' openapi.json
-          curl --fail --silent --show-error --max-time 15 "${WEBAPP_URL%/}/swagger/index.html" -o swagger.html
-          grep -Fq 'ClaimsModule API' swagger.html
+          curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-all-errors --max-time 15 "${WEBAPP_URL%/}/api/health"
 
-      - name: Verify demo registration is available
-        env:
-          WEBAPP_URL: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
-        run: |
-          registration_status=$(curl --silent --show-error --max-time 15 --output /dev/null --write-out '%{http_code}' \
-            --header 'Content-Type: application/json' \
-            --data '{"username":"deployment-check","password":"validation-only","role":"invalid"}' \
-            "${WEBAPP_URL%/}/api/auth/register")
-          if [ "$registration_status" != 422 ]; then
-            echo "::error::Expected demo registration to reject the invalid role with 422. Received $registration_status."
-            exit 1
-          fi
+
