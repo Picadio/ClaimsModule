@@ -1,8 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace ClaimsModule.API.Controllers;
 
 [ApiController]
+[AllowAnonymous]
 [Route("api")]
 public class HealthController : ControllerBase
 {
