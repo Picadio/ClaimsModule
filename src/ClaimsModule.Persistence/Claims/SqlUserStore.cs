@@ -37,6 +37,13 @@ internal sealed class SqlUserStore(ClaimsDbContext db) : IUserStore, IClaimHandl
             .Select(user => new StoredUser(user.Id, user.OrganizationEntityId, user.UserName, user.Role, user.PasswordHash))
             .SingleOrDefaultAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<UserReference>> ListAsync(Guid organizationId, CancellationToken cancellationToken) =>
+        await db.Set<ApplicationUser>().AsNoTracking()
+            .Where(user => user.OrganizationEntityId == organizationId)
+            .OrderBy(user => user.DisplayName).ThenBy(user => user.Id)
+            .Select(user => new UserReference(user.Id, user.DisplayName, user.Role))
+            .ToListAsync(cancellationToken);
+
     public Task<bool> IsHandlerAsync(Guid organizationId, Guid userId, CancellationToken cancellationToken) =>
         db.Set<ApplicationUser>().AnyAsync(user => user.OrganizationEntityId == organizationId && user.Id == userId &&
             user.Role == UserRoles.Handler, cancellationToken);

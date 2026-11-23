@@ -1,4 +1,5 @@
 using ClaimsModule.Application.Reference;
+using ClaimsModule.Application.Security;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,4 +19,9 @@ public sealed class ReferenceController(ISender sender) : ControllerBase
     [HttpGet("claim-statuses")]
     public Task<IReadOnlyList<ClaimStatusReference>> ListClaimStatuses(CancellationToken cancellationToken) =>
         sender.Send(new ListClaimStatusesQuery(), cancellationToken);
+
+    [HttpGet("users")]
+    [ResponseCache(NoStore = true)]
+    public Task<IReadOnlyList<UserReference>> ListUsers(CancellationToken cancellationToken) =>
+        sender.Send(new ListUsersQuery(), cancellationToken);
 }

@@ -12,7 +12,8 @@ internal sealed class RequestCorrelationMiddleware(RequestDelegate next)
         context.Features.Set(new RequestCorrelation(correlationId));
         context.Response.OnStarting(() =>
         {
-            context.Response.Headers["X-Correlation-ID"] = correlationId.ToString("D");
+            context.Response.Headers[RequestCorrelation.HeaderName] = correlationId.ToString("D");
+            context.Response.Headers.AppendCommaSeparatedValues("Access-Control-Expose-Headers", RequestCorrelation.HeaderName);
             return Task.CompletedTask;
         });
         await next(context);
@@ -21,6 +22,8 @@ internal sealed class RequestCorrelationMiddleware(RequestDelegate next)
 
 internal sealed record RequestCorrelation(Guid Id)
 {
+    public const string HeaderName = "X-Correlation-ID";
+
     public static Guid Read(HttpContext context) =>
         (context.Features.Get<RequestCorrelation>() ?? throw new InvalidOperationException("Missing request correlation")).Id;
 }

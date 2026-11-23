@@ -127,6 +127,12 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
         public Task<bool> IsHandlerAsync(Guid organization, Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult(organization == organizationId && accounts[UserRoles.Handler].UserId == userId);
 
+        public Task<IReadOnlyList<UserReference>> ListAsync(Guid organization, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<UserReference>>(organization == organizationId
+                ? accounts.Select(pair => new UserReference(pair.Value.UserId,
+                    pair.Key == UserRoles.Handler ? handlerName : pair.Key, pair.Key)).ToArray()
+                : []);
+
         public Task<IReadOnlyList<Guid>> FindByNameAsync(Guid organization, string name, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<Guid>>(organization == organizationId && handlerName.Contains(name, StringComparison.OrdinalIgnoreCase)
                 ? [accounts[UserRoles.Handler].UserId] : []);

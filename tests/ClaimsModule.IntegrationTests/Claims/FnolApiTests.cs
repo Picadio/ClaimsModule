@@ -41,6 +41,7 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
     [InlineData("/api/policies/search?q=Meridian")]
     [InlineData("/api/policies/1a46cfff-f909-44dc-ad15-000000000001/coverage")]
     [InlineData("/api/reference/cause-of-loss-codes")]
+    [InlineData("/api/reference/users")]
     public async Task ClaimsAndReferenceReadsRequireAuthentication(string path)
     {
         using var client = factory.CreateApiClient();
@@ -115,6 +116,29 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
         Assert.True(errors.TryGetProperty("Parties", out _));
         Assert.True(errors.TryGetProperty("LossEvent.LossDate", out _));
         Assert.True(errors.TryGetProperty("LossEvent.LossDescription", out _));
+        Assert.Equal(response.Headers.GetValues("X-Correlation-ID").Single(),
+            problem.RootElement.GetProperty("correlationId").GetString());
+    }
+
+    [Theory]
+    [InlineData("/api/claims")]
+    [InlineData("/api/claims/validate")]
+    public async Task IntakeReturnsCorrelatedValidationProblemForAnInvalidDate(string path)
+    {
+        await using var api = new ClaimsApiFactory();
+        using var client = api.CreateApiClient();
+        await Authenticate(client, api);
+        using var response = await client.PostAsJsonAsync(path, new { lossEvent = new { lossDate = "bad date" } });
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("ValidationError", problem.RootElement.GetProperty("type").GetString());
+        Assert.Equal(422, problem.RootElement.GetProperty("status").GetInt32());
+        Assert.True(problem.RootElement.GetProperty("errors").TryGetProperty("$.lossEvent.lossDate", out _));
+        Assert.Equal(response.Headers.GetValues("X-Correlation-ID").Single(),
+            problem.RootElement.GetProperty("correlationId").GetString());
+        Assert.Contains("X-Correlation-ID", response.Headers.GetValues("Access-Control-Expose-Headers"));
     }
 
     [Fact]

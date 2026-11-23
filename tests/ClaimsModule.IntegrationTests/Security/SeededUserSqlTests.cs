@@ -1,5 +1,7 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using ClaimsModule.API.Security;
 using ClaimsModule.Application.Security;
 using ClaimsModule.IntegrationTests.Claims;
 using ClaimsModule.Persistence.Claims;
@@ -59,6 +61,21 @@ public sealed class SeededUserSqlTests
 
             using var wrong = await client.PostAsJsonAsync("/api/auth/demo-token", new { username = "handler", password = "wrong" });
             Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+            using var directoryLogin = await client.PostAsJsonAsync("/api/auth/demo-token", new { username = "supervisor", password = "1" });
+            var token = await directoryLogin.Content.ReadFromJsonAsync<DemoTokenResponse>();
+            Assert.NotNull(token);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+            var foreignOrganization = Guid.NewGuid();
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                INSERT INTO dbo.Users (OrganizationEntityId, UserName, NormalizedUserName, DisplayName, Role, PasswordHash, CreatedAt)
+                SELECT {foreignOrganization}, UserName, NormalizedUserName, DisplayName, Role, PasswordHash, CreatedAt
+                FROM dbo.Users WHERE Role = {UserRoles.Handler};
+                UPDATE dbo.Users SET IsDeleted = 1 WHERE OrganizationEntityId = {organization} AND Role = {UserRoles.Manager};
+                """);
+            var users = await client.GetFromJsonAsync<UserReference[]>("/api/reference/users");
+            Assert.NotNull(users);
+            Assert.Equal(new[] { UserRoles.Handler, UserRoles.Supervisor }, users.Select(user => user.Role));
+
             await using var other = new ClaimsApiFactory(true, claimsConnection: database.ConnectionString, useDatabaseUsers: true);
             using var otherClient = other.CreateApiClient();
             using var hidden = await otherClient.PostAsJsonAsync("/api/auth/demo-token", new { username = "handler", password = "1" });

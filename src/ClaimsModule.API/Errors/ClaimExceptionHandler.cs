@@ -35,5 +35,5 @@ internal sealed class ClaimExceptionHandler : IExceptionHandler
     }
 
     private static IResult ValidationProblem(IDictionary<string, string[]> errors) =>
-        Results.ValidationProblem(errors, statusCode: StatusCodes.Status422UnprocessableEntity, type: "ValidationError");
+        Results.ValidationProblem(errors, statusCode: StatusCodes.Status422UnprocessableEntity, type: ApiProblems.ValidationError);
 }

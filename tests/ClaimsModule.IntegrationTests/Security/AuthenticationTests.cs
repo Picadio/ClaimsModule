@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using ClaimsModule.API.Security;
 using ClaimsModule.Application.Security;
+using ClaimsModule.IntegrationTests.Claims;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Xunit;
@@ -39,6 +40,26 @@ public sealed class AuthenticationTests(ClaimsApiFactory factory) : IClassFixtur
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var identity = await response.Content.ReadFromJsonAsync<UserIdentity>();
         Assert.Equal(new UserIdentity(account.UserId, factory.OrganizationId, role), identity);
+    }
+
+    [Fact]
+    public async Task UserDirectoryListsOnlyPublicFieldsForTheCurrentTenant()
+    {
+        using var client = factory.CreateApiClient();
+        await FnolApiTests.Authenticate(client, factory, UserRoles.Manager);
+        using var response = await client.GetAsync("/api/reference/users");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(response.Headers.CacheControl?.NoStore);
+        using var document = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var users = document.RootElement.EnumerateArray().ToArray();
+        Assert.Equal(3, users.Length);
+        foreach (var user in users)
+        {
+            Assert.Equal(3, user.EnumerateObject().Count());
+            var role = user.GetProperty("role").GetString()!;
+            Assert.Equal(factory.Account(role).UserId, user.GetProperty("userId").GetGuid());
+            Assert.False(string.IsNullOrWhiteSpace(user.GetProperty("displayName").GetString()));
+        }
     }
 
     [Theory]

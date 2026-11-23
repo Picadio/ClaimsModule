@@ -13,9 +13,11 @@ using ClaimsModule.Persistence;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers(options => options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true)
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()))
+    .ConfigureApiBehaviorOptions(options => options.InvalidModelStateResponseFactory = ApiProblems.InvalidModelState);
 builder.Services.AddOpenApi(OpenApiConfiguration.AddBearerSupport);
-builder.Services.AddProblemDetails();
+builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
+    ApiProblems.AddCorrelation(context.HttpContext, context.ProblemDetails));
 builder.Services.AddExceptionHandler<ClaimExceptionHandler>();
 builder.Services.AddClaimsApplication();
 var blobConnection = builder.Configuration.GetConnectionString("Blob");
