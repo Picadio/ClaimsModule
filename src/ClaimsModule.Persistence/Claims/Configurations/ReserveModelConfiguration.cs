@@ -4,7 +4,7 @@ using ClaimsModule.Domain.Reserves;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace ClaimsModule.Persistence.Claims;
+namespace ClaimsModule.Persistence.Claims.Configurations;
 
 internal sealed class ReserveModelConfiguration : IEntityTypeConfiguration<ClaimReserveComponent>,
     IEntityTypeConfiguration<ReserveHistory>, IEntityTypeConfiguration<ReserveSubmission>

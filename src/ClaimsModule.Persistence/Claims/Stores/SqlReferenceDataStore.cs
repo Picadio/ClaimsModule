@@ -1,7 +1,7 @@
 using ClaimsModule.Application.Reference;
 using Microsoft.EntityFrameworkCore;
 
-namespace ClaimsModule.Persistence.Claims;
+namespace ClaimsModule.Persistence.Claims.Stores;
 
 internal sealed class SqlReferenceDataStore(ClaimsDbContext db) : IReferenceDataStore
 {

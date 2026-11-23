@@ -4,7 +4,7 @@ using ClaimsModule.Domain.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace ClaimsModule.Persistence.Claims;
+namespace ClaimsModule.Persistence.Claims.Stores;
 
 internal sealed class SqlClaimMutationStore(ClaimsDbContext db) : IClaimMutationStore
 {

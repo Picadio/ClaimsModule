@@ -1,6 +1,7 @@
 using ClaimsModule.Application.Claims;
 using ClaimsModule.Application.Security;
 using ClaimsModule.Domain.Claims;
+using ClaimsModule.Persistence.Claims.Stores;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClaimsModule.Persistence.Claims;

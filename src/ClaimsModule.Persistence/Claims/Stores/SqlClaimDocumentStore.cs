@@ -3,7 +3,7 @@ using ClaimsModule.Domain.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace ClaimsModule.Persistence.Claims;
+namespace ClaimsModule.Persistence.Claims.Stores;
 
 internal sealed class SqlClaimDocumentStore(ClaimsDbContext db) : IClaimDocumentStore
 {

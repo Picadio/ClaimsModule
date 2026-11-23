@@ -4,6 +4,7 @@ using ClaimsModule.Application.Reference;
 using ClaimsModule.Application.Reserves;
 using ClaimsModule.Application.Security;
 using ClaimsModule.Persistence.Claims;
+using ClaimsModule.Persistence.Claims.Stores;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 

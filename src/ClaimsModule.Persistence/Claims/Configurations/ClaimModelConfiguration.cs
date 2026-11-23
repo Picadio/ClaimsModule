@@ -3,7 +3,7 @@ using ClaimsModule.Domain.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
-namespace ClaimsModule.Persistence.Claims;
+namespace ClaimsModule.Persistence.Claims.Configurations;
 
 internal sealed class ClaimModelConfiguration :
     IEntityTypeConfiguration<Claim>, IEntityTypeConfiguration<LossEvent>, IEntityTypeConfiguration<ClaimParty>,

@@ -4,7 +4,7 @@ using ClaimsModule.Domain.Claims;
 using ClaimsModule.Domain.Reserves;
 using Microsoft.EntityFrameworkCore;
 
-namespace ClaimsModule.Persistence.Claims;
+namespace ClaimsModule.Persistence.Claims.Stores;
 
 internal sealed class SqlClaimLifecycleStore(ClaimsDbContext db) : IClaimLifecycleStore
 {
