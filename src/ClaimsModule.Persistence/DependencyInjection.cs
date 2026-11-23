@@ -14,7 +14,14 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddClaimsPersistence(this IServiceCollection services, string? connectionString)
     {
-        services.AddDbContext<ClaimsDbContext>(options => options.UseSqlServer(connectionString));
+        services.AddDbContext<ClaimsDbContext>(options => options.UseSqlServer(connectionString, sqlOptions =>
+        {
+            sqlOptions.EnableRetryOnFailure(
+                maxRetryCount: 5,
+                maxRetryDelay: TimeSpan.FromSeconds(15),
+                errorNumbersToAdd: null
+            );
+        }));
         services.AddScoped<IClaimStore, SqlClaimStore>();
         services.AddScoped<IUserStore, SqlUserStore>();
         services.AddScoped<IClaimHandlerDirectory, SqlUserStore>();
