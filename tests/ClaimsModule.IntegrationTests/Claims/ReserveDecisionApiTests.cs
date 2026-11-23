@@ -124,6 +124,10 @@ public sealed class ReserveDecisionApiTests(ClaimsApiFactory factory) : IClassFi
             Assert.NotNull(ledger);
             Assert.True(ledger.ReserveLimitOverrideEnabled);
             Assert.Equal(10_100_000m, ledger.TotalReserves);
+            var approvedEntries = ledger.Components.SelectMany(component => component.History)
+                .Where(entry => entry.ApprovedByUserId == api.Account(UserRoles.Manager).UserId).ToArray();
+            Assert.NotEmpty(approvedEntries);
+            Assert.All(approvedEntries, entry => Assert.Equal(UserRoles.Manager, entry.ApprovedByDisplayName));
             var audit = await handler.GetFromJsonAsync<ClaimAuditPage>(path + "/audit?pageSize=100", JsonOptions);
             Assert.NotNull(audit);
             Assert.Equal(3, audit.Items.Count(item => item.EventType == "RESERVE_APPROVED"));

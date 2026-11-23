@@ -22,12 +22,9 @@ internal static class AuthenticationExtensions
         services.AddHttpContextAccessor();
         services.AddScoped<ICurrentUser, HttpCurrentUser>();
         var demo = builder.Configuration.GetRequiredSection("Authentication:Demo");
-        if (demo.GetValue<bool>("Enabled"))
-        {
-            ValidateLegacyUserIds(demo);
-        }
-        services.AddSingleton(new DemoTokenOptions(demo.GetValue<bool>("Enabled"),
+        services.AddSingleton(new DemoTokenOptions(demo.GetValue<bool>("Enabled"), demo.GetValue<bool>("AllowRegistration"),
             demo.GetValue<Guid>("OrganizationEntityId"), issuer, audience, signingKey));
+        services.AddSingleton<IUserPasswordHasher, DemoPasswordHasher>();
         services.AddScoped<DemoTokenIssuer>();
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -84,24 +81,6 @@ internal static class AuthenticationExtensions
                     Window = TimeSpan.FromMinutes(1)
                 }));
         });
-    }
-
-    private static void ValidateLegacyUserIds(IConfigurationSection demo)
-    {
-        var seedIds = new Dictionary<string, Guid>
-        {
-            [UserRoles.Handler] = Guid.Parse("76352da5-cc3f-49c0-8caf-149e6f51c4ec"),
-            [UserRoles.Supervisor] = Guid.Parse("c274bc9c-934e-4910-a759-f1afbef3e46f"),
-            [UserRoles.Manager] = Guid.Parse("a257d183-69ee-494a-84c3-5ce2215a26ab")
-        };
-        foreach (var (role, seedId) in seedIds)
-        {
-            var configured = demo[$"Accounts:{role}:UserId"];
-            if (configured is not null && (!Guid.TryParse(configured, out var id) || id != seedId))
-            {
-                throw new InvalidOperationException("Legacy demo user IDs differ from seeded IDs. Migrate user identities before enabling demo login. See README.");
-            }
-        }
     }
 
     private static string RequiredValue(IConfigurationSection section, string name) =>

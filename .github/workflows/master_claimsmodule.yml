@@ -78,10 +78,10 @@ jobs:
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_D87C70407C4B4D83B9036D611CF9440B }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_99F6399FB5574C10A8BB6964BF38048D }}
 
-      - name: Enable the Linux WebJobs agent
+      - name: Configure the demo API and Linux WebJobs agent
         run: |
           az webapp config appsettings set --resource-group test --name ClaimsModule \
-            --settings WEBSITE_SKIP_RUNNING_KUDUAGENT=false --output none
+            --settings WEBSITE_SKIP_RUNNING_KUDUAGENT=false Authentication__Demo__AllowRegistration=true --output none
 
       - name: Deploy to Azure Web App
         id: deploy-to-webapp
@@ -138,3 +138,16 @@ jobs:
           jq -e '.paths | has("/api/auth/me")' openapi.json
           curl --fail --silent --show-error --max-time 15 "${WEBAPP_URL%/}/swagger/index.html" -o swagger.html
           grep -Fq 'ClaimsModule API' swagger.html
+
+      - name: Verify demo registration is available
+        env:
+          WEBAPP_URL: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+        run: |
+          registration_status=$(curl --silent --show-error --max-time 15 --output /dev/null --write-out '%{http_code}' \
+            --header 'Content-Type: application/json' \
+            --data '{"username":"deployment-check","password":"validation-only","role":"invalid"}' \
+            "${WEBAPP_URL%/}/api/auth/register")
+          if [ "$registration_status" != 422 ]; then
+            echo "::error::Expected demo registration to reject the invalid role with 422. Received $registration_status."
+            exit 1
+          fi

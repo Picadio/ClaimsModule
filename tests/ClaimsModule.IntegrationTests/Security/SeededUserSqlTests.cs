@@ -9,7 +9,6 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.AspNetCore.Identity;
 using Xunit;
 
 namespace ClaimsModule.IntegrationTests.Security;
@@ -17,26 +16,16 @@ namespace ClaimsModule.IntegrationTests.Security;
 public sealed class SeededUserSqlTests
 {
     [Fact]
-    public void SeededUsersHaveDistinctValidPasswordHashes()
+    public void CurrentModelDoesNotSeedLoginAccounts()
     {
         var options = new DbContextOptionsBuilder<ClaimsDbContext>().UseSqlServer("Server=localhost;Database=unused;Integrated Security=True").Options;
         using var db = new ClaimsDbContext(options);
         var entity = Assert.Single(db.GetService<IDesignTimeModel>().Model.GetEntityTypes(), item => item.GetTableName() == "Users");
-        var users = entity.GetSeedData().ToArray();
-        Assert.Equal(3, users.Length);
-        Assert.Equal(3, users.Select(user => user["PasswordHash"]).Distinct().Count());
-        var hasher = new PasswordHasher<string>();
-        foreach (var user in users)
-        {
-            var name = Assert.IsType<string>(user["UserName"]);
-            var hash = Assert.IsType<string>(user["PasswordHash"]);
-            Assert.NotEqual(PasswordVerificationResult.Failed, hasher.VerifyHashedPassword(name, hash, "1"));
-            Assert.Equal(PasswordVerificationResult.Failed, hasher.VerifyHashedPassword(name, hash, "wrong"));
-        }
+        Assert.Empty(entity.GetSeedData());
     }
 
     [SqlServerFact]
-    public async Task MigrationSeedsThreeUsersWithWorkingPasswordsAndTenantIsolation()
+    public async Task MigrationRetiresSeedCredentialsAndRegistrationHandlesConcurrentAttempts()
     {
         var database = new SqlConnectionStringBuilder(Environment.GetEnvironmentVariable(FnolApiTests.SqlServerVariable))
         {
@@ -47,39 +36,49 @@ public sealed class SeededUserSqlTests
         try
         {
             await db.Database.MigrateAsync();
-            var count = await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM dbo.Users").SingleAsync();
-            Assert.Equal(3, count);
             var organization = Guid.Parse("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4");
-            await using var api = new ClaimsApiFactory(true, claimsConnection: database.ConnectionString,
-                organizationId: organization, useDatabaseUsers: true);
-            using var client = api.CreateApiClient();
-            foreach (var role in new[] { UserRoles.Handler, UserRoles.Supervisor, UserRoles.Manager })
-            {
-                using var login = await client.PostAsJsonAsync("/api/auth/demo-token", new { username = role, password = "1" });
-                Assert.Equal(HttpStatusCode.OK, login.StatusCode);
-            }
+            var retiredManager = Guid.Parse("a257d183-69ee-494a-84c3-5ce2215a26ab");
+            var active = await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM dbo.Users WHERE IsDeleted = 0").SingleAsync();
+            Assert.Equal(0, active);
+            var cleared = await db.Database.SqlQuery<int>($"SELECT COUNT(*) AS [Value] FROM dbo.Users WHERE IsDeleted = 1 AND PasswordHash = ''").SingleAsync();
+            Assert.Equal(3, cleared);
 
-            using var wrong = await client.PostAsJsonAsync("/api/auth/demo-token", new { username = "handler", password = "wrong" });
-            Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
-            using var directoryLogin = await client.PostAsJsonAsync("/api/auth/demo-token", new { username = "supervisor", password = "1" });
-            var token = await directoryLogin.Content.ReadFromJsonAsync<DemoTokenResponse>();
+            await using var api = new ClaimsApiFactory(true, claimsConnection: database.ConnectionString,
+                organizationId: organization, useDatabaseUsers: true, allowRegistration: true);
+            using var client = api.CreateApiClient();
+            using var retired = await client.PostAsJsonAsync("/api/auth/demo-token", new { username = "manager", password = "1" });
+            Assert.Equal(HttpStatusCode.Unauthorized, retired.StatusCode);
+
+            var registration = new RegisterDemoUserRequest("Manager", "Example-password", UserRoles.Manager);
+            var key = Guid.NewGuid().ToString();
+            var responses = await Task.WhenAll(AuthenticationTests.Register(client, registration, key),
+                AuthenticationTests.Register(client, registration, key));
+            using var first = responses[0];
+            using var replay = responses[1];
+            Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+            Assert.Equal(HttpStatusCode.Created, replay.StatusCode);
+            var account = await first.Content.ReadFromJsonAsync<UserReference>();
+            Assert.NotNull(account);
+            Assert.NotEqual(retiredManager, account.UserId);
+            Assert.Equal(account, await replay.Content.ReadFromJsonAsync<UserReference>());
+            using var duplicate = await AuthenticationTests.Register(client, registration with { Username = "mANAGER" },
+                Guid.NewGuid().ToString());
+            Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+
+            using var login = await client.PostAsJsonAsync("/api/auth/demo-token",
+                new { username = "manager", password = registration.Password });
+            var token = await login.Content.ReadFromJsonAsync<DemoTokenResponse>();
             Assert.NotNull(token);
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
-            var foreignOrganization = Guid.NewGuid();
-            await db.Database.ExecuteSqlInterpolatedAsync($"""
-                INSERT INTO dbo.Users (OrganizationEntityId, UserName, NormalizedUserName, DisplayName, Role, PasswordHash, CreatedAt)
-                SELECT {foreignOrganization}, UserName, NormalizedUserName, DisplayName, Role, PasswordHash, CreatedAt
-                FROM dbo.Users WHERE Role = {UserRoles.Handler};
-                UPDATE dbo.Users SET IsDeleted = 1 WHERE OrganizationEntityId = {organization} AND Role = {UserRoles.Manager};
-                """);
-            var users = await client.GetFromJsonAsync<UserReference[]>("/api/reference/users");
-            Assert.NotNull(users);
-            Assert.Equal(new[] { UserRoles.Handler, UserRoles.Supervisor }, users.Select(user => user.Role));
+            var entries = await client.GetFromJsonAsync<UserReference[]>("/api/reference/users");
+            Assert.Equal(account, Assert.Single(entries!));
 
-            await using var other = new ClaimsApiFactory(true, claimsConnection: database.ConnectionString, useDatabaseUsers: true);
-            using var otherClient = other.CreateApiClient();
-            using var hidden = await otherClient.PostAsJsonAsync("/api/auth/demo-token", new { username = "handler", password = "1" });
-            Assert.Equal(HttpStatusCode.Unauthorized, hidden.StatusCode);
+            using var scope = api.Services.CreateScope();
+            var users = scope.ServiceProvider.GetRequiredService<IUserStore>();
+            var labels = await users.FindDisplayNamesAsync(organization, [retiredManager, account.UserId], default);
+            Assert.Equal("manager", labels[retiredManager]);
+            Assert.Equal("Manager", labels[account.UserId]);
+            Assert.Empty(await users.FindDisplayNamesAsync(Guid.NewGuid(), [retiredManager, account.UserId], default));
         }
         finally
         {

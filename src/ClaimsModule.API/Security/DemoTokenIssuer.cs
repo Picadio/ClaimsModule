@@ -1,14 +1,12 @@
 using ClaimsModule.Application.Security;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
 namespace ClaimsModule.API.Security;
 
-public sealed class DemoTokenIssuer(IUserStore users, DemoTokenOptions options)
+public sealed class DemoTokenIssuer(IUserStore users, IUserPasswordHasher passwords, DemoTokenOptions options)
 {
     private const int LifetimeSeconds = 30 * 60;
-    private readonly PasswordHasher<string> passwords = new();
     private readonly JsonWebTokenHandler tokens = new();
 
     public bool Enabled => options.Enabled;
@@ -16,7 +14,7 @@ public sealed class DemoTokenIssuer(IUserStore users, DemoTokenOptions options)
     public async Task<DemoTokenResponse?> IssueAsync(string username, string password, CancellationToken cancellationToken)
     {
         var user = await users.FindForLoginAsync(options.OrganizationId, username.Trim().ToUpperInvariant(), cancellationToken);
-        if (user is null || passwords.VerifyHashedPassword(user.UserName, user.PasswordHash, password) == PasswordVerificationResult.Failed)
+        if (user is null || !passwords.Verify(user.UserName, user.PasswordHash, password))
         {
             return null;
         }
@@ -38,5 +36,6 @@ public sealed class DemoTokenIssuer(IUserStore users, DemoTokenOptions options)
     }
 }
 
-public sealed record DemoTokenOptions(bool Enabled, Guid OrganizationId, string Issuer, string Audience, SecurityKey SigningKey);
+public sealed record DemoTokenOptions(bool Enabled, bool AllowRegistration, Guid OrganizationId,
+    string Issuer, string Audience, SecurityKey SigningKey);
 public sealed record DemoTokenResponse(string AccessToken, string TokenType, int ExpiresIn);

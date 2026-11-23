@@ -85,14 +85,61 @@ public sealed class AuthenticationTests(ClaimsApiFactory factory) : IClassFixtur
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    [Fact]
-    public void DemoLoginRejectsMismatchedLegacyUserIdAtStartup()
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task DemoRegistrationRequiresBothFlags(bool demoEnabled, bool allowRegistration)
     {
-        using var api = new ClaimsApiFactory(demoEnabled: true, legacyHandlerId: Guid.NewGuid().ToString("D"));
+        await using var api = new ClaimsApiFactory(demoEnabled, allowRegistration: allowRegistration);
+        using var client = api.CreateApiClient();
+        using var response = await client.PostAsJsonAsync("/api/auth/register",
+            new RegisterDemoUserRequest("Maya", "Example-password", UserRoles.Manager));
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 
-        var error = Assert.Throws<InvalidOperationException>(() => api.CreateApiClient());
+    [Theory]
+    [InlineData("ValidName", "Example-password", "admin")]
+    [InlineData("ValidName", "short", UserRoles.Handler)]
+    [InlineData("Invalid:Name", "Example-password", UserRoles.Supervisor)]
+    public async Task DemoRegistrationValidatesRolesAndCredentials(string username, string password, string role)
+    {
+        await using var api = new ClaimsApiFactory(demoEnabled: true, allowRegistration: true);
+        using var client = api.CreateApiClient();
+        using var response = await client.PostAsJsonAsync("/api/auth/register", new RegisterDemoUserRequest(username, password, role));
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+    }
 
-        Assert.Contains("Legacy demo user IDs differ from seeded IDs", error.Message);
+    [Fact]
+    public async Task DemoRegistrationCanReplayAndSignInWithSelectedRole()
+    {
+        await using var api = new ClaimsApiFactory(demoEnabled: true, allowRegistration: true);
+        using var client = api.CreateApiClient();
+        var account = new RegisterDemoUserRequest("Maya", "Example-password", UserRoles.Manager);
+        var registrationKey = Guid.NewGuid().ToString();
+        using var first = await Register(client, account, registrationKey);
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        var user = await first.Content.ReadFromJsonAsync<UserReference>();
+        Assert.Equal("Maya", user!.DisplayName);
+        Assert.Equal(UserRoles.Manager, user.Role);
+        using var replay = await Register(client, account, registrationKey);
+        Assert.Equal(HttpStatusCode.Created, replay.StatusCode);
+        Assert.Equal(user, await replay.Content.ReadFromJsonAsync<UserReference>());
+        using var changed = await Register(client, account with { Role = UserRoles.Handler }, registrationKey);
+        Assert.Equal(HttpStatusCode.Conflict, changed.StatusCode);
+        using var duplicate = await Register(client, account with { Username = "MAYA" }, Guid.NewGuid().ToString());
+        Assert.Equal(HttpStatusCode.Conflict, duplicate.StatusCode);
+        using var login = await Login(client, "maya", account.Password);
+        Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        var token = await login.Content.ReadFromJsonAsync<DemoTokenResponse>();
+        using var managerOnly = await Get(client, ManagerPath, token!.AccessToken);
+        Assert.Equal(HttpStatusCode.NoContent, managerOnly.StatusCode);
+    }
+
+    internal static async Task<HttpResponseMessage> Register(HttpClient client, RegisterDemoUserRequest account, string key)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/register") { Content = JsonContent.Create(account) };
+        request.Headers.Add("Idempotency-Key", key);
+        return await client.SendAsync(request);
     }
 
     [Fact]

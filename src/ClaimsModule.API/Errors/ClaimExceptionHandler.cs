@@ -20,6 +20,8 @@ internal sealed class ClaimExceptionHandler : IExceptionHandler
                 .ToDictionary(group => group.Key, group => group.Select(error => error.Message).ToArray())),
             IdempotencyConflictException conflict => Results.Problem(title: "Idempotency key conflict",
                 detail: conflict.Message, statusCode: StatusCodes.Status409Conflict, type: "IdempotencyConflict"),
+            UsernameUnavailableException unavailable => Results.Problem(title: "Username unavailable",
+                detail: unavailable.Message, statusCode: StatusCodes.Status409Conflict, type: "UsernameUnavailable"),
             ClaimConcurrencyException conflict => Results.Problem(title: "Claim update conflict",
                 detail: conflict.Message, statusCode: StatusCodes.Status409Conflict, type: "ClaimConcurrencyConflict"),
             _ => null

@@ -29,6 +29,8 @@ public sealed record ReserveTransaction(Guid Id, Guid ReserveId, ReserveComponen
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Guid? ApprovedByUserId { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ApprovedByDisplayName { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Guid? RejectedByUserId { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DateTimeOffset? RejectedAt { get; init; }

@@ -24,7 +24,7 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
     private readonly bool glJobsEnabled;
     private readonly string? handlerDisplayName;
     private readonly bool useDatabaseUsers;
-    private readonly string? legacyHandlerId;
+    private readonly bool allowRegistration;
     private readonly Dictionary<string, DemoAccount> accounts =
         new[] { UserRoles.Handler, UserRoles.Supervisor, UserRoles.Manager }
             .ToDictionary(role => role, _ => new DemoAccount(Guid.NewGuid(), RandomSecret()));
@@ -39,7 +39,7 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
     internal ClaimsApiFactory(bool demoEnabled, string? environment = null,
         string? claimsConnection = null, Guid? organizationId = null, bool openApiEnabled = false,
         bool allowDirectClosure = false, bool glJobsEnabled = false, string? handlerDisplayName = null,
-        bool useDatabaseUsers = false, string? legacyHandlerId = null)
+        bool useDatabaseUsers = false, bool allowRegistration = false)
     {
         this.demoEnabled = demoEnabled;
         this.environment = environment ?? Environments.Development;
@@ -49,7 +49,7 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
         this.glJobsEnabled = glJobsEnabled;
         this.handlerDisplayName = handlerDisplayName;
         this.useDatabaseUsers = useDatabaseUsers;
-        this.legacyHandlerId = legacyHandlerId;
+        this.allowRegistration = allowRegistration;
         OrganizationId = organizationId ?? Guid.NewGuid();
     }
 
@@ -69,16 +69,12 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
             ["Authentication:Jwt:Audience"] = Audience,
             ["Authentication:Jwt:SigningKey"] = Convert.ToBase64String(SigningKey),
             ["Authentication:Demo:Enabled"] = demoEnabled.ToString(),
+            ["Authentication:Demo:AllowRegistration"] = allowRegistration.ToString(),
             ["Authentication:Demo:OrganizationEntityId"] = OrganizationId.ToString("D"),
             ["OpenApi:Enabled"] = openApiEnabled.ToString(),
             ["Jobs:Enabled"] = glJobsEnabled.ToString(),
             ["Claims:AllowDirectClosure"] = allowDirectClosure.ToString()
         };
-        if (legacyHandlerId is not null)
-        {
-            settings[$"Authentication:Demo:Accounts:{UserRoles.Handler}:UserId"] = legacyHandlerId;
-        }
-
         if (claimsConnection is not null)
         {
             settings["ConnectionStrings:Claims"] = claimsConnection;
@@ -115,14 +111,60 @@ public sealed class ClaimsApiFactory : WebApplicationFactory<AuthController>
         : IUserStore, IClaimHandlerDirectory
     {
         private readonly PasswordHasher<string> hasher = new();
+        private readonly Dictionary<Guid, NewDemoUser> registered = new();
 
         public Task<StoredUser?> FindForLoginAsync(Guid organization, string name, CancellationToken cancellationToken)
         {
+            lock (registered)
+            {
+                var registration = registered.FirstOrDefault(pair => pair.Value.OrganizationId == organization &&
+                    pair.Value.NormalizedUserName == name);
+                if (registration.Value is { } user)
+                {
+                    return Task.FromResult<StoredUser?>(new StoredUser(registration.Key, organization,
+                        user.UserName, user.Role, user.PasswordHash));
+                }
+            }
+
             var pair = accounts.FirstOrDefault(item => item.Key.ToUpperInvariant() == name);
             return Task.FromResult(organization == organizationId && pair.Value is not null
                 ? new StoredUser(pair.Value.UserId, organizationId, pair.Key, pair.Key, hasher.HashPassword(pair.Key, pair.Value.Password))
                 : null);
         }
+
+        public Task<StoredUser?> FindRegistrationAsync(Guid organization, string keyHash, CancellationToken cancellationToken)
+        {
+            lock (registered)
+            {
+                var match = registered.FirstOrDefault(pair => pair.Value.OrganizationId == organization &&
+                    pair.Value.RegistrationKeyHash == keyHash);
+                return Task.FromResult(match.Value is { } user
+                    ? new StoredUser(match.Key, organization, user.UserName, user.Role, user.PasswordHash)
+                    : null);
+            }
+        }
+
+        public Task<Guid?> TryCreateAsync(NewDemoUser user, CancellationToken cancellationToken)
+        {
+            lock (registered)
+            {
+                if (registered.Values.Any(other => other.OrganizationId == user.OrganizationId &&
+                    (other.NormalizedUserName == user.NormalizedUserName ||
+                     user.RegistrationKeyHash is not null && other.RegistrationKeyHash == user.RegistrationKeyHash)))
+                {
+                    return Task.FromResult<Guid?>(null);
+                }
+
+                var id = Guid.NewGuid();
+                registered.Add(id, user);
+                return Task.FromResult<Guid?>(id);
+            }
+        }
+
+        public async Task<IReadOnlyDictionary<Guid, string>> FindDisplayNamesAsync(Guid organization, Guid[] userIds,
+            CancellationToken cancellationToken) =>
+            (await ListAsync(organization, cancellationToken)).Where(user => userIds.Contains(user.UserId))
+                .ToDictionary(user => user.UserId, user => user.DisplayName);
 
         public Task<bool> IsHandlerAsync(Guid organization, Guid userId, CancellationToken cancellationToken) =>
             Task.FromResult(organization == organizationId && accounts[UserRoles.Handler].UserId == userId);

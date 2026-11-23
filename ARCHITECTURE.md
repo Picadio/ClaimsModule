@@ -14,6 +14,7 @@ caller, and a failed closure returns all blocking conditions.
 | `PUT /api/claims/{id}/status` | Apply a transition using `targetStatus` and optional `reason`. Accepts `Idempotency-Key`. |
 | `GET /api/reference/claim-statuses` | List statuses and next steps available to the caller's role. |
 | `GET /api/reference/users` | List active users in the caller's organization by ID, display name and role. Supports handler assignment and actor labels. |
+| `POST /api/auth/register` | Create an account in the configured demo tenant when demo login and registration are both enabled. The selected demo role is validated and an optional `Idempotency-Key` supports replay. |
 | `GET /api/claims/{id}/closure-check` | Read the claim-specific checklist for closing. Returns blockers and indicates when a positive balance needs confirmation. |
 | `GET /api/claims?assignedHandlerName=hand` | Filter claims by a partial, case-insensitive name from the tenant's demo handler directory. |
 | `GET /api/claims/{id}/audit?page=1&pageSize=20` | Return audit entries newest first. Page sizes range from 1 to 100. |
