@@ -40,17 +40,22 @@ internal sealed class SqlClaimUnitOfWork(ClaimsDbContext db) : IClaimUnitOfWork
         CancellationToken cancellationToken, IsolationLevel isolation = IsolationLevel.ReadCommitted,
         string lockMode = "Exclusive")
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(isolation, cancellationToken);
-        await db.Database.ExecuteSqlInterpolatedAsync($"""
-            DECLARE @status int;
-            EXEC @status = sys.sp_getapplock @Resource = {lockResource},
-                @LockMode = {lockMode}, @LockOwner = 'Transaction', @LockTimeout = 10000;
-            IF @status < 0
-                THROW 50001, 'Could not acquire the claim lock.', 1;
-            """, cancellationToken);
+        var strategy = db.Database.CreateExecutionStrategy();
 
-        var result = await work(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return result;
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(isolation, cancellationToken);
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                                                           DECLARE @status int;
+                                                           EXEC @status = sys.sp_getapplock @Resource = {lockResource},
+                                                               @LockMode = {lockMode}, @LockOwner = 'Transaction', @LockTimeout = 10000;
+                                                           IF @status < 0
+                                                               THROW 50001, 'Could not acquire the claim lock.', 1;
+                                                           """, cancellationToken);
+
+            var result = await work(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        });
     }
 }
