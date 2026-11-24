@@ -21,7 +21,7 @@ internal sealed class GetClaimReservesHandler(IReserveStore store, IUserStore us
         var approvers = approverIds.Length == 0 ? new Dictionary<Guid, string>() :
             await users.FindDisplayNamesAsync(actor.Identity.OrganizationEntityId, approverIds, cancellationToken);
         var components = ledger.Balances.Select(balance => new ReserveComponentLedger(balance.Id, balance.Component,
-            balance.CurrentAmount, balance.PendingAmount,
+            balance.CurrentAmount, balance.PendingAmount, balance.HasApprovedTransaction, balance.ApprovalStatus,
             history[balance.Id].Select(entry => ReserveTransaction.From(entry, balance.Component) with
             {
                 ApprovedByDisplayName = entry.ApprovedByUserId is Guid approver ? approvers.GetValueOrDefault(approver) : null

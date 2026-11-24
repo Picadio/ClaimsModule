@@ -16,14 +16,17 @@ internal sealed class SqlClaimLifecycleStore(ClaimsDbContext db) : IClaimLifecyc
             .SingleOrDefaultAsync(claim => claim.Id == claimId, cancellationToken);
 
     public async Task<IReadOnlyList<ClaimTransitionRule>> ListTransitionsAsync(CancellationToken cancellationToken) =>
-        await db.Set<ClaimTransitionRule>().AsNoTracking().ToListAsync(cancellationToken);
+        await db.Set<StoredClaimTransition>().AsNoTracking()
+            .Select(rule => new ClaimTransitionRule(rule.FromStatus, rule.ToStatus, rule.RequiredPermission))
+            .ToListAsync(cancellationToken);
 
     public async Task<ClaimReserveFacts> ReadReserveFactsAsync(Guid claimId, CancellationToken cancellationToken)
     {
         var components = db.Set<ClaimReserveComponent>().Where(component => component.ClaimId == claimId);
         var history = db.Set<ReserveHistory>().Where(entry => entry.ClaimId == claimId &&
             components.Any(component => component.Id == entry.ReserveId));
-        var approved = await components.AnyAsync(component => component.CurrentAmount != 0, cancellationToken);
+        var approved = await history.AnyAsync(entry => entry.ApprovalStatus == ReserveApprovalStatus.Approved ||
+            entry.ApprovalStatus == ReserveApprovalStatus.AutoApproved, cancellationToken);
         var pending = await history.AnyAsync(entry => entry.ApprovalStatus == ReserveApprovalStatus.PendingApproval,
             cancellationToken);
         var positive = await components.AnyAsync(component => component.CurrentAmount > 0, cancellationToken);

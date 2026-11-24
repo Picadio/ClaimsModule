@@ -62,10 +62,20 @@ public sealed record ReserveTransaction(Guid Id, Guid ReserveId, ReserveComponen
         };
 }
 
-public sealed record ReserveBalance(Guid Id, ReserveComponentType Component, decimal CurrentAmount, decimal PendingAmount);
+public enum ReserveComponentStatus { Active, Closed }
+
+public record ReserveBalance(Guid Id, ReserveComponentType Component, decimal CurrentAmount, decimal PendingAmount,
+    bool HasApprovedTransaction, ReserveApprovalStatus? ApprovalStatus)
+{
+    public ReserveComponentStatus Status => HasApprovedTransaction && CurrentAmount == 0
+        ? ReserveComponentStatus.Closed
+        : ReserveComponentStatus.Active;
+}
 
 public sealed record ReserveComponentLedger(Guid Id, ReserveComponentType Component, decimal CurrentAmount,
-    decimal PendingAmount, IReadOnlyList<ReserveTransaction> History);
+    decimal PendingAmount, bool HasApprovedTransaction, ReserveApprovalStatus? ApprovalStatus,
+    IReadOnlyList<ReserveTransaction> History)
+    : ReserveBalance(Id, Component, CurrentAmount, PendingAmount, HasApprovedTransaction, ApprovalStatus);
 
 public sealed record ClaimReserveLedger(Guid ClaimId, decimal TotalReserves, IReadOnlyList<ReserveComponentLedger> Components)
 {

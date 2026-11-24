@@ -22,100 +22,6 @@ namespace ClaimsModule.Persistence.Claims.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
-            modelBuilder.Entity("ClaimsModule.Application.Claims.ClaimTransitionRule", b =>
-                {
-                    b.Property<string>("FromStatus")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("ToStatus")
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.Property<string>("RequiredPermission")
-                        .IsRequired()
-                        .HasMaxLength(50)
-                        .HasColumnType("nvarchar(50)");
-
-                    b.HasKey("FromStatus", "ToStatus");
-
-                    b.ToTable("ClaimStatusTransitions", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            FromStatus = "Draft",
-                            ToStatus = "Open",
-                            RequiredPermission = "handler"
-                        },
-                        new
-                        {
-                            FromStatus = "Open",
-                            ToStatus = "UnderInvestigation",
-                            RequiredPermission = "handler"
-                        },
-                        new
-                        {
-                            FromStatus = "Open",
-                            ToStatus = "PendingPayment",
-                            RequiredPermission = "handler"
-                        },
-                        new
-                        {
-                            FromStatus = "Open",
-                            ToStatus = "Closed",
-                            RequiredPermission = "handler"
-                        },
-                        new
-                        {
-                            FromStatus = "Open",
-                            ToStatus = "Withdrawn",
-                            RequiredPermission = "handler"
-                        },
-                        new
-                        {
-                            FromStatus = "UnderInvestigation",
-                            ToStatus = "Open",
-                            RequiredPermission = "handler"
-                        },
-                        new
-                        {
-                            FromStatus = "UnderInvestigation",
-                            ToStatus = "PendingPayment",
-                            RequiredPermission = "handler"
-                        },
-                        new
-                        {
-                            FromStatus = "UnderInvestigation",
-                            ToStatus = "Closed",
-                            RequiredPermission = "handler"
-                        },
-                        new
-                        {
-                            FromStatus = "UnderInvestigation",
-                            ToStatus = "Withdrawn",
-                            RequiredPermission = "handler"
-                        },
-                        new
-                        {
-                            FromStatus = "PendingPayment",
-                            ToStatus = "Closed",
-                            RequiredPermission = "handler"
-                        },
-                        new
-                        {
-                            FromStatus = "Closed",
-                            ToStatus = "Reopened",
-                            RequiredPermission = "supervisor"
-                        },
-                        new
-                        {
-                            FromStatus = "Reopened",
-                            ToStatus = "Open",
-                            RequiredPermission = "system"
-                        });
-                });
-
             modelBuilder.Entity("ClaimsModule.Domain.Claims.Claim", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1367,6 +1273,185 @@ namespace ClaimsModule.Persistence.Claims.Migrations
                         .IsUnique();
 
                     b.ToTable("ReserveSubmissions", (string)null);
+                });
+
+            modelBuilder.Entity("ClaimsModule.Persistence.Claims.StoredClaimTransition", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWSEQUENTIALID()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<string>("FromStatus")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
+                    b.Property<Guid>("OrganizationEntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RequiredPermission")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("ToStatus")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasPrecision(7)
+                        .HasColumnType("datetimeoffset(7)");
+
+                    b.Property<Guid?>("UpdatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationEntityId", "FromStatus", "ToStatus")
+                        .IsUnique()
+                        .HasFilter("[IsDeleted] = 0");
+
+                    b.ToTable("ClaimStatusTransitions", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("f44ba162-e62d-4f9e-9c25-000000000001"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FromStatus = "Draft",
+                            IsDeleted = false,
+                            OrganizationEntityId = new Guid("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4"),
+                            RequiredPermission = "handler",
+                            ToStatus = "Open"
+                        },
+                        new
+                        {
+                            Id = new Guid("f44ba162-e62d-4f9e-9c25-000000000002"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FromStatus = "Open",
+                            IsDeleted = false,
+                            OrganizationEntityId = new Guid("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4"),
+                            RequiredPermission = "handler",
+                            ToStatus = "UnderInvestigation"
+                        },
+                        new
+                        {
+                            Id = new Guid("f44ba162-e62d-4f9e-9c25-000000000003"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FromStatus = "Open",
+                            IsDeleted = false,
+                            OrganizationEntityId = new Guid("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4"),
+                            RequiredPermission = "handler",
+                            ToStatus = "PendingPayment"
+                        },
+                        new
+                        {
+                            Id = new Guid("f44ba162-e62d-4f9e-9c25-000000000004"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FromStatus = "Open",
+                            IsDeleted = false,
+                            OrganizationEntityId = new Guid("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4"),
+                            RequiredPermission = "handler",
+                            ToStatus = "Closed"
+                        },
+                        new
+                        {
+                            Id = new Guid("f44ba162-e62d-4f9e-9c25-000000000005"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FromStatus = "Open",
+                            IsDeleted = false,
+                            OrganizationEntityId = new Guid("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4"),
+                            RequiredPermission = "handler",
+                            ToStatus = "Withdrawn"
+                        },
+                        new
+                        {
+                            Id = new Guid("f44ba162-e62d-4f9e-9c25-000000000006"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FromStatus = "UnderInvestigation",
+                            IsDeleted = false,
+                            OrganizationEntityId = new Guid("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4"),
+                            RequiredPermission = "handler",
+                            ToStatus = "Open"
+                        },
+                        new
+                        {
+                            Id = new Guid("f44ba162-e62d-4f9e-9c25-000000000007"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FromStatus = "UnderInvestigation",
+                            IsDeleted = false,
+                            OrganizationEntityId = new Guid("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4"),
+                            RequiredPermission = "handler",
+                            ToStatus = "PendingPayment"
+                        },
+                        new
+                        {
+                            Id = new Guid("f44ba162-e62d-4f9e-9c25-000000000008"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FromStatus = "UnderInvestigation",
+                            IsDeleted = false,
+                            OrganizationEntityId = new Guid("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4"),
+                            RequiredPermission = "handler",
+                            ToStatus = "Closed"
+                        },
+                        new
+                        {
+                            Id = new Guid("f44ba162-e62d-4f9e-9c25-000000000009"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FromStatus = "UnderInvestigation",
+                            IsDeleted = false,
+                            OrganizationEntityId = new Guid("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4"),
+                            RequiredPermission = "handler",
+                            ToStatus = "Withdrawn"
+                        },
+                        new
+                        {
+                            Id = new Guid("f44ba162-e62d-4f9e-9c25-000000000010"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FromStatus = "PendingPayment",
+                            IsDeleted = false,
+                            OrganizationEntityId = new Guid("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4"),
+                            RequiredPermission = "handler",
+                            ToStatus = "Closed"
+                        },
+                        new
+                        {
+                            Id = new Guid("f44ba162-e62d-4f9e-9c25-000000000011"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FromStatus = "Closed",
+                            IsDeleted = false,
+                            OrganizationEntityId = new Guid("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4"),
+                            RequiredPermission = "supervisor",
+                            ToStatus = "Reopened"
+                        },
+                        new
+                        {
+                            Id = new Guid("f44ba162-e62d-4f9e-9c25-000000000012"),
+                            CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 1, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            FromStatus = "Reopened",
+                            IsDeleted = false,
+                            OrganizationEntityId = new Guid("61fd4d23-97a2-4c4a-ace1-96a3b3e738d4"),
+                            RequiredPermission = "system",
+                            ToStatus = "Open"
+                        });
                 });
 
             modelBuilder.Entity("ClaimsModule.Persistence.Claims.Stores.ApplicationUser", b =>

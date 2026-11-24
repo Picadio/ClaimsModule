@@ -10,7 +10,7 @@ internal sealed class ClaimModelConfiguration :
     IEntityTypeConfiguration<ClaimRiskObject>, IEntityTypeConfiguration<ClaimWarning>, IEntityTypeConfiguration<Policy>,
     IEntityTypeConfiguration<CauseOfLoss>, IEntityTypeConfiguration<ClaimNumberCounter>,
     IEntityTypeConfiguration<ClaimSubmission>, IEntityTypeConfiguration<ClaimAuditEntry>,
-    IEntityTypeConfiguration<ClaimStatusSubmission>, IEntityTypeConfiguration<ClaimTransitionRule>
+    IEntityTypeConfiguration<ClaimStatusSubmission>, IEntityTypeConfiguration<StoredClaimTransition>
 {
     public void Configure(EntityTypeBuilder<Claim> claim)
     {
@@ -162,10 +162,11 @@ internal sealed class ClaimModelConfiguration :
             .OnDelete(DeleteBehavior.Restrict);
     }
 
-    public void Configure(EntityTypeBuilder<ClaimTransitionRule> transition)
+    public void Configure(EntityTypeBuilder<StoredClaimTransition> transition)
     {
         transition.ToTable("ClaimStatusTransitions");
-        transition.HasKey(row => new { row.FromStatus, row.ToStatus });
+        transition.HasIndex(row => new { row.OrganizationEntityId, row.FromStatus, row.ToStatus }).IsUnique()
+            .HasFilter("[IsDeleted] = 0");
         transition.Property(row => row.FromStatus).HasConversion<string>().HasMaxLength(50);
         transition.Property(row => row.ToStatus).HasConversion<string>().HasMaxLength(50);
         transition.Property(row => row.RequiredPermission).HasMaxLength(50);

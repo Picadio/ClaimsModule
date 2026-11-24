@@ -41,7 +41,7 @@ internal sealed class CreateClaimHandler(IClaimStore store, IClaimUnitOfWork uni
             {
                 var reserve = await reserveWriter.SubmitAsync(claim, null, initial.Component!.Value,
                     ReserveWriter.InitialChange(initial.Amount),
-                    user.UserId, reportedAt, command.CorrelationId, 1 + claim.Warnings.Count, token);
+                    user.UserId, reportedAt, command.CorrelationId, 1 + claim.Warnings.Count + claim.Parties.Count, token);
                 response = response with { InitialReserve = reserve };
             }
 
@@ -82,6 +82,12 @@ internal sealed class RecordClaimCreatedAudit(IAuditLogService audit) : INotific
                 correlationId, "VALIDATION_ISSUE_ADDED", warning.Message,
                 NewValues: new { warning.Code, warning.Field, Severity = "Warning" }, RelatedEntityId: warning.Id,
                 RelatedEntityType: nameof(ClaimWarning), Position: position++));
+        }
+
+        foreach (var party in claim.Parties)
+        {
+            audit.Append(ClaimAuditEvent.PartyAdded(claim, party, claim.CreatedByUserId, created.OccurredAt,
+                correlationId, position++));
         }
 
         return Task.CompletedTask;

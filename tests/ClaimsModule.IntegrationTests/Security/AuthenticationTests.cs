@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
+using System.Text.Json;
 using ClaimsModule.API.Security;
 using ClaimsModule.Application.Security;
 using ClaimsModule.IntegrationTests.Claims;
@@ -157,6 +158,7 @@ public sealed class AuthenticationTests(ClaimsApiFactory factory) : IClassFixtur
         using var response = await Login(client, "unknown", "incorrect-password");
 
         Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
+        await AssertProblemAsync(response, "TooManyRequests");
     }
 
     [Theory]
@@ -169,6 +171,7 @@ public sealed class AuthenticationTests(ClaimsApiFactory factory) : IClassFixtur
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Contains(response.Headers.WwwAuthenticate, challenge => challenge.Scheme == "Bearer");
+        await AssertProblemAsync(response, "Unauthorized");
     }
 
     [Theory]
@@ -204,6 +207,21 @@ public sealed class AuthenticationTests(ClaimsApiFactory factory) : IClassFixtur
         using var response = await Get(client, path, token);
 
         Assert.Equal(expected, response.StatusCode);
+        if (expected == HttpStatusCode.Forbidden)
+        {
+            await AssertProblemAsync(response, "Forbidden");
+        }
+    }
+
+    private static async Task AssertProblemAsync(HttpResponseMessage response, string type)
+    {
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(type, problem.GetProperty("type").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(problem.GetProperty("title").GetString()));
+        Assert.Equal((int)response.StatusCode, problem.GetProperty("status").GetInt32());
+        Assert.Equal(Guid.Parse(Assert.Single(response.Headers.GetValues("X-Correlation-ID"))),
+            problem.GetProperty("correlationId").GetGuid());
     }
 
     private string CreateToken(string role, TokenProblem? problem = null)

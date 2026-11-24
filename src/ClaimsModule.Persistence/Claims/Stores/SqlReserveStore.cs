@@ -67,14 +67,25 @@ internal sealed class SqlReserveStore(ClaimsDbContext db) : IReserveStore
                 entry.Id, entry.PostingKey), entry.PostingJobId)).ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<ReserveBalance>> ReadBalancesAsync(Guid claimId, CancellationToken cancellationToken) =>
-        await db.Set<ClaimReserveComponent>()
+    public async Task<IReadOnlyList<ReserveBalance>> ReadBalancesAsync(Guid claimId, CancellationToken cancellationToken)
+    {
+        var history = db.Set<ReserveHistory>().Where(entry => entry.ClaimId == claimId);
+        return await db.Set<ClaimReserveComponent>()
             .Where(component => component.ClaimId == claimId && db.Set<Claim>().Any(claim => claim.Id == component.ClaimId))
             .OrderBy(component => component.ComponentType)
             .Select(component => new ReserveBalance(component.Id, component.ComponentType, component.CurrentAmount,
-                db.Set<ReserveHistory>().Where(entry => entry.ClaimId == claimId && entry.ReserveId == component.Id &&
-                    entry.ApprovalStatus == ReserveApprovalStatus.PendingApproval).Sum(entry => entry.Amount)))
+                history.Where(entry => entry.ReserveId == component.Id && entry.ApprovalStatus == ReserveApprovalStatus.PendingApproval)
+                    .Sum(entry => entry.Amount),
+                history.Any(entry => entry.ReserveId == component.Id &&
+                    (entry.ApprovalStatus == ReserveApprovalStatus.Approved || entry.ApprovalStatus == ReserveApprovalStatus.AutoApproved)),
+                history.Where(entry => entry.ReserveId == component.Id)
+                    .OrderBy(entry => entry.ApprovalStatus == ReserveApprovalStatus.PendingApproval ? 0 :
+                        entry.ApprovalStatus == ReserveApprovalStatus.Approved ||
+                        entry.ApprovalStatus == ReserveApprovalStatus.AutoApproved ? 1 : 2)
+                    .ThenByDescending(entry => entry.ChangeSequence)
+                    .Select(entry => (ReserveApprovalStatus?)entry.ApprovalStatus).FirstOrDefault()))
             .ToListAsync(cancellationToken);
+    }
 
     public async Task<ReserveLedgerData?> ReadLedgerAsync(Guid claimId, CancellationToken cancellationToken)
     {

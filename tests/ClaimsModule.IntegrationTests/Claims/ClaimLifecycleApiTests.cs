@@ -12,6 +12,8 @@ using ClaimsModule.IntegrationTests.Security;
 using ClaimsModule.Persistence.Claims;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Xunit;
 
 namespace ClaimsModule.IntegrationTests.Claims;
@@ -25,6 +27,45 @@ public sealed class ClaimLifecycleApiTests(ClaimsApiFactory factory) : IClassFix
     {
         Converters = { new JsonStringEnumConverter() }
     };
+
+    [SqlServerFact]
+    public async Task TransitionMigrationPreservesLegacyPermissionsAndScopesRulesToTheTenant()
+    {
+        const string predecessor = "20261123155353_RegisterDemoAccounts";
+        var database = new SqlConnectionStringBuilder(Environment.GetEnvironmentVariable(FnolApiTests.SqlServerVariable))
+        {
+            InitialCatalog = $"ClaimsModuleTransitions_{Guid.NewGuid():N}"
+        };
+        var options = new DbContextOptionsBuilder<ClaimsDbContext>().UseSqlServer(database.ConnectionString).Options;
+        await using var db = new ClaimsDbContext(options);
+        var migrator = db.GetService<IMigrator>();
+        try
+        {
+            await migrator.MigrateAsync(predecessor);
+            await db.Database.ExecuteSqlRawAsync("""
+                UPDATE dbo.ClaimStatusTransitions SET RequiredPermission = 'supervisor'
+                WHERE FromStatus = 'Draft' AND ToStatus = 'Open';
+                """);
+
+            await migrator.MigrateAsync();
+            var permission = await db.Database.SqlQuery<string>($"""
+                SELECT RequiredPermission AS [Value] FROM dbo.ClaimStatusTransitions
+                WHERE FromStatus = 'Draft' AND ToStatus = 'Open' AND OrganizationEntityId = {SeededOrganization}
+                """).SingleAsync();
+            Assert.Equal("supervisor", permission);
+
+            await migrator.MigrateAsync(predecessor);
+            var legacyPermission = await db.Database.SqlQueryRaw<string>("""
+                SELECT RequiredPermission AS [Value] FROM dbo.ClaimStatusTransitions
+                WHERE FromStatus = 'Draft' AND ToStatus = 'Open'
+                """).SingleAsync();
+            Assert.Equal(permission, legacyPermission);
+        }
+        finally
+        {
+            await db.Database.EnsureDeletedAsync();
+        }
+    }
 
     [Theory]
     [InlineData(ClaimPath + "/status", "PUT")]
@@ -258,6 +299,9 @@ public sealed class ClaimLifecycleApiTests(ClaimsApiFactory factory) : IClassFix
         Assert.Equal(HttpStatusCode.NotFound, read.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, check.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, write.StatusCode);
+        var rules = await other.GetFromJsonAsync<ClaimStatusReference[]>(ReferencePath, JsonOptions);
+        Assert.NotNull(rules);
+        Assert.All(rules, rule => Assert.Empty(rule.AllowedTransitions));
     }
 
     private static async Task VerifyClosureBlockers(ClaimsDbContext db, HttpClient client, string path, Guid claimId)

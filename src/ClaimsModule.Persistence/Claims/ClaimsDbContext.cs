@@ -28,6 +28,7 @@ public sealed class ClaimsDbContext(DbContextOptions<ClaimsDbContext> options, I
         ConfigureRecord<ClaimMutationSubmission>(modelBuilder);
         ConfigureRecord<ClaimAuditEntry>(modelBuilder);
         ConfigureRecord<ClaimStatusSubmission>(modelBuilder);
+        ConfigureRecord<StoredClaimTransition>(modelBuilder);
         ConfigureRecord<ClaimReserveComponent>(modelBuilder);
         ConfigureRecord<ReserveHistory>(modelBuilder);
         ConfigureRecord<ReserveSubmission>(modelBuilder);

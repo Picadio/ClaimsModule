@@ -47,6 +47,7 @@ var app = builder.Build();
 app.UseMiddleware<RequestCorrelationMiddleware>();
 app.UseHttpsRedirection();
 app.UseExceptionHandler();
+app.UseStatusCodePages(context => ApiProblems.WriteStatusCodeAsync(context.HttpContext));
 
 if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("OpenApi:Enabled"))
 {

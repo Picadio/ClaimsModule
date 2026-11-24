@@ -241,7 +241,10 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
             var read = await client.GetFromJsonAsync<ClaimDetail>(firstRequest.Headers.Location, ResponseJson);
             Assert.NotNull(read);
             Assert.Equal(first.Id, read.Id);
-            Assert.Single(read.Parties);
+            var initialParty = Assert.Single(read.Parties);
+            var partyAudit = Assert.Single(read.RecentAuditEntries, item => item.EventType == "PARTY_ADDED");
+            Assert.Equal(initialParty.Id, partyAudit.RelatedEntityId);
+            Assert.Equal("ClaimParty", partyAudit.RelatedEntityType);
             Assert.Equal(request.LossEvent.LossDescription, read.LossEvent.LossDescription);
 
             var handlerId = sqlApi.Account(UserRoles.Handler).UserId;
@@ -275,7 +278,8 @@ public sealed class FnolApiTests(ClaimsApiFactory factory) : IClassFixture<Claim
                 SELECT COUNT(*) AS [Value] FROM dbo.ClaimAuditLog
                 WHERE ClaimId = {first.Id} AND CorrelationId = {correlationId}
                 """).SingleAsync();
-            Assert.Equal(3, auditRows);
+            Assert.Equal(4, auditRows);
+            Assert.Equal(correlationId, partyAudit.CorrelationId);
             var update = await Assert.ThrowsAsync<SqlException>(() => context.Database.ExecuteSqlInterpolatedAsync(
                 $"UPDATE dbo.ClaimAuditLog SET Description = 'changed' WHERE ClaimId = {first.Id}"));
             Assert.Equal(50002, update.Number);

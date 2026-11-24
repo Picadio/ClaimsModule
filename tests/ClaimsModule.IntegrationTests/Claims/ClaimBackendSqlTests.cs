@@ -94,7 +94,7 @@ public sealed class ClaimBackendSqlTests
             var audit = await client.GetFromJsonAsync<ClaimAuditPage>(path + "/audit?pageSize=100", JsonOptions);
             Assert.NotNull(audit);
             Assert.Single(audit.Items, item => item.EventType == "SLA_BREACH_DETECTED");
-            Assert.Single(audit.Items, item => item.EventType == "PARTY_ADDED");
+            Assert.Equal(2, audit.Items.Count(item => item.EventType == "PARTY_ADDED"));
             Assert.Single(audit.Items, item => item.EventType == "PARTY_REMOVED");
             Assert.Single(audit.Items, item => item.EventType == "CLAIM_NOTES_UPDATED");
             Assert.Single(audit.Items, item => item.EventType == "DOCUMENT_UPLOADED" && item.RelatedEntityId == document.Id);

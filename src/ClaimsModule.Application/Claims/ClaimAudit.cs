@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ClaimsModule.Domain.Claims;
 using FluentValidation;
 using MediatR;
 
@@ -11,7 +12,13 @@ public interface IAuditLogService
 
 public sealed record ClaimAuditEvent(Guid OrganizationId, Guid ClaimId, Guid? ActorId, DateTimeOffset OccurredAt, Guid CorrelationId,
     string EventType, string Description, object? OldValues = null, object? NewValues = null,
-    Guid? RelatedEntityId = null, string? RelatedEntityType = null, int Position = 0);
+    Guid? RelatedEntityId = null, string? RelatedEntityType = null, int Position = 0)
+{
+    internal static ClaimAuditEvent PartyAdded(Claim claim, ClaimParty party, Guid? actor, DateTimeOffset now,
+        Guid correlationId, int position = 0) => new(claim.OrganizationEntityId, claim.Id, actor, now, correlationId,
+        "PARTY_ADDED", "A party was added to the claim.", NewValues: new { Role = party.Role.ToString(), party.IsActive },
+        RelatedEntityId: party.Id, RelatedEntityType: nameof(ClaimParty), Position: position);
+}
 
 public interface IClaimAuditReader
 {

@@ -33,6 +33,9 @@ public sealed class ReserveDecisionApiTests(ClaimsApiFactory factory) : IClassFi
         using var request = new HttpRequestMessage(new HttpMethod(method), path);
         using var response = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Forbidden", problem.GetProperty("type").GetString());
     }
 
     [Fact]
@@ -120,10 +123,20 @@ public sealed class ReserveDecisionApiTests(ClaimsApiFactory factory) : IClassFi
             Assert.Equal(ReserveApprovalStatus.Approved, (await Read<ReserveTransaction>(approvedAfterOverride)).ApprovalStatus);
             await VerifyRejectedRevisionAndRetraction(supervisor, manager, reserves);
 
+            var indemnityPath = $"{reserves}/{initial.ReserveId:D}";
+            using var increase = await handler.PutAsJsonAsync(indemnityPath, new AdjustReserveRequest(11_000m, "Proposed increase"), JsonOptions);
+            using var decrease = await handler.PutAsJsonAsync(indemnityPath, new AdjustReserveRequest(-11_000m, "Proposed decrease"), JsonOptions);
+            Assert.Equal(ReserveApprovalStatus.PendingApproval, (await Read<ReserveTransaction>(increase)).ApprovalStatus);
+            Assert.Equal(ReserveApprovalStatus.PendingApproval, (await Read<ReserveTransaction>(decrease)).ApprovalStatus);
+
             var ledger = await handler.GetFromJsonAsync<ClaimReserveLedger>(reserves, JsonOptions);
             Assert.NotNull(ledger);
             Assert.True(ledger.ReserveLimitOverrideEnabled);
             Assert.Equal(10_100_000m, ledger.TotalReserves);
+            var indemnity = Assert.Single(ledger.Components, component => component.Id == initial.ReserveId);
+            Assert.Equal(0m, indemnity.PendingAmount);
+            Assert.Equal(ReserveApprovalStatus.PendingApproval, indemnity.ApprovalStatus);
+            Assert.True(indemnity.HasApprovedTransaction);
             var approvedEntries = ledger.Components.SelectMany(component => component.History)
                 .Where(entry => entry.ApprovedByUserId == api.Account(UserRoles.Manager).UserId).ToArray();
             Assert.NotEmpty(approvedEntries);

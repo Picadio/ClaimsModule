@@ -110,11 +110,15 @@ public sealed class ReserveApiTests(ClaimsApiFactory factory) : IClassFixture<Cl
             var opened = new ChangeClaimStatusRequest(ClaimStatus.Open, AssignedHandlerId: api.Account("handler").UserId);
             using var openResponse = await client.PutAsJsonAsync(path + "/status", opened, JsonOptions);
             Assert.Equal(HttpStatusCode.OK, openResponse.StatusCode);
+
+            var reserves = path + "/reserves";
+            var reverse = new AdjustReserveRequest(-1_000m, "Reverse initial estimate", ReserveTransactionType.Reverse);
+            using var reversed = await client.PutAsJsonAsync($"{reserves}/{draft.InitialReserve.ReserveId:D}", reverse, JsonOptions);
+            Assert.Equal(HttpStatusCode.OK, reversed.StatusCode);
             using var pendingPayment = await client.PutAsJsonAsync(path + "/status",
                 new ChangeClaimStatusRequest(ClaimStatus.PendingPayment), JsonOptions);
             Assert.Equal(HttpStatusCode.OK, pendingPayment.StatusCode);
 
-            var reserves = path + "/reserves";
             var expense = new SubmitReserveRequest(ReserveComponentType.Expense, 2_000m, "Expected expense");
             var submissions = await Task.WhenAll(
                 SendJson(client, HttpMethod.Post, reserves, expense, "expense"),
@@ -156,19 +160,32 @@ public sealed class ReserveApiTests(ClaimsApiFactory factory) : IClassFixture<Cl
 
             var ledger = await client.GetFromJsonAsync<ClaimReserveLedger>(reserves, JsonOptions);
             Assert.NotNull(ledger);
-            Assert.Equal(2_500m, ledger.TotalReserves);
+            Assert.Equal(1_500m, ledger.TotalReserves);
+            var reversedLedger = Assert.Single(ledger.Components, component => component.Component == ReserveComponentType.Indemnity);
+            Assert.Equal(ReserveComponentStatus.Closed, reversedLedger.Status);
+            Assert.Equal(ReserveApprovalStatus.AutoApproved, reversedLedger.ApprovalStatus);
+            Assert.True(reversedLedger.HasApprovedTransaction);
+            Assert.Equal(0m, reversedLedger.CurrentAmount);
             var expenseLedger = Assert.Single(ledger.Components, component => component.Component == ReserveComponentType.Expense);
+            Assert.Equal(ReserveComponentStatus.Active, expenseLedger.Status);
+            Assert.Equal(ReserveApprovalStatus.AutoApproved, expenseLedger.ApprovalStatus);
             Assert.Equal(new[] { transaction.Id, created.Id }, expenseLedger.History.Select(row => row.Id));
             var pendingLedger = Assert.Single(ledger.Components, component => component.Component == ReserveComponentType.ALAE);
             Assert.Equal(0m, pendingLedger.CurrentAmount);
             Assert.Equal(10_000_000m, pendingLedger.PendingAmount);
+            Assert.Equal(ReserveComponentStatus.Active, pendingLedger.Status);
+            Assert.Equal(ReserveApprovalStatus.PendingApproval, pendingLedger.ApprovalStatus);
+            Assert.False(pendingLedger.HasApprovedTransaction);
 
             var detail = await client.GetFromJsonAsync<ClaimDetail>(path, JsonOptions);
             Assert.NotNull(detail);
-            Assert.Equal(2_500m, detail.ReserveBalances.Sum(balance => balance.CurrentAmount));
+            Assert.Equal(1_500m, detail.ReserveBalances.Sum(balance => balance.CurrentAmount));
+            var reversedBalance = Assert.Single(detail.ReserveBalances, balance => balance.Id == reversedLedger.Id);
+            Assert.True(reversedBalance.HasApprovedTransaction);
+            Assert.Equal(ReserveComponentStatus.Closed, reversedBalance.Status);
             var list = await client.GetFromJsonAsync<ClaimPage>(ClaimsPath, JsonOptions);
             Assert.NotNull(list);
-            Assert.Equal(2_500m, Assert.Single(list.Items).TotalReserves);
+            Assert.Equal(1_500m, Assert.Single(list.Items).TotalReserves);
             var audit = await client.GetFromJsonAsync<ClaimAuditPage>(path + "/audit", JsonOptions);
             Assert.NotNull(audit);
             Assert.Single(audit.Items, row => row.EventType == "RESERVE_CREATED" && row.RelatedEntityId == created.Id);
@@ -177,6 +194,18 @@ public sealed class ReserveApiTests(ClaimsApiFactory factory) : IClassFixture<Cl
 
             await AssertTenantIsolation(database.ConnectionString, reserves, componentPath, adjust);
             await AssertArchivedComponent(db, client, reserves, componentPath, created.ReserveId, expense, adjust);
+
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE dbo.ReserveHistory SET IsDeleted = 1
+                WHERE OrganizationEntityId = {SeededOrganization} AND ClaimId = {draft.Id} AND ReserveId = {reversedLedger.Id}
+                """);
+            var archivedHistory = await client.GetFromJsonAsync<ClaimReserveLedger>(reserves, JsonOptions);
+            Assert.NotNull(archivedHistory);
+            var emptyComponent = Assert.Single(archivedHistory.Components, component => component.Id == reversedLedger.Id);
+            Assert.Empty(emptyComponent.History);
+            Assert.Null(emptyComponent.ApprovalStatus);
+            Assert.False(emptyComponent.HasApprovedTransaction);
+            Assert.Equal(ReserveComponentStatus.Active, emptyComponent.Status);
         }
         finally
         {

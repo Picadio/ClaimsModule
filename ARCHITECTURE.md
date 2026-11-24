@@ -40,7 +40,13 @@ The claim raises `ClaimCreated`. The Application layer publishes `ClaimCreatedNo
 ## Claim lifecycle and audit
 
 The API exposes the lifecycle through MediatR commands and queries. Persistence
-seeds the shared `ClaimStatusTransitions` reference table in an EF migration.
+seeds the demo organization's `ClaimStatusTransitions` reference table in an EF migration.
+The global organization and soft-delete filter applies to the transition rules.
+Each active transition pair is unique within its organization.
+The upgrade preserves existing transition permissions and assigns the former
+shared rows to the demo organization. Rollback requires all rules to belong
+to that organization and remain active.
+An additional organization needs its own seeded rules before it can transition claims.
 The command checks the current status and the caller's role against that table,
 then applies the claim's business rules.
 An invalid transition gets HTTP 422 with the next statuses available to the
@@ -80,8 +86,9 @@ also has to match when supplied.
 `UnderInvestigation` also requires `liabilityDetermined: true`. Closure blocks
 pending approvals and requires `confirmPositiveReserveBalance: true` plus a
 reason when a component has a positive balance. These checks read persisted
-reserve facts in the claim write transaction. A component with a nonzero
-approved balance qualifies for `PendingPayment`.
+reserve facts in the claim write transaction. An `Approved` or `AutoApproved`
+history entry qualifies for `PendingPayment`, including after a full reversal.
+The check excludes archived components and deleted history.
 
 The closure checklist reads claim and reserve facts in a short serializable
 transaction. It takes a shared claim lock before reading so concurrent edits
@@ -138,7 +145,11 @@ that would raise the net approved total over $10 million records a warning and
 stays pending until a manager override permits approval under the amount-based
 authority rules. Only approved deltas update
 balances, independently of posting. Pending amounts are the sum of pending
-proposals. A pending opening cannot be bypassed by submitting another Add.
+proposals. The component is Closed after an approved balance returns to zero.
+An unapproved component with zero balance remains Active. Its approval summary
+uses a pending decision when present, then the latest approved decision by
+sequence, then the latest rejection or cancellation. A pending opening
+cannot be bypassed by submitting another Add.
 The transaction's override warning describes the projection at submission.
 The approval command rechecks the current net total inside the claim lock.
 

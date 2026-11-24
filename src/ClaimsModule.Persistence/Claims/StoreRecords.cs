@@ -1,6 +1,14 @@
+using ClaimsModule.Domain.Claims;
 using ClaimsModule.Domain.Common;
 
 namespace ClaimsModule.Persistence.Claims;
+
+internal sealed class StoredClaimTransition : OrganizationRecord
+{
+    public ClaimStatus FromStatus { get; private set; }
+    public ClaimStatus ToStatus { get; private set; }
+    public string RequiredPermission { get; private set; } = null!;
+}
 
 internal sealed class Policy : OrganizationRecord
 {

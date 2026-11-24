@@ -49,7 +49,7 @@ internal sealed class ClaimPartyCommands(IClaimLifecycleStore store, IClaimUnitO
             var now = clock.GetUtcNow();
             var party = claim.AddParty(command.Request, actor, now);
             await unitOfWork.SaveAsync(token);
-            Append(claim, party, actor, now, command.CorrelationId, "PARTY_ADDED", "A party was added to the claim.");
+            audit.Append(ClaimAuditEvent.PartyAdded(claim, party, actor, now, command.CorrelationId));
             var result = mapper.Map<ClaimPartyDto>(party);
             replays.Record(claim.Id, actor, now, key, result);
             await unitOfWork.SaveAsync(token);
@@ -76,8 +76,9 @@ internal sealed class ClaimPartyCommands(IClaimLifecycleStore store, IClaimUnitO
             if (claim.DeactivateParty(party, actor, now))
             {
                 await unitOfWork.SaveAsync(token);
-                Append(claim, party, actor, now, command.CorrelationId, "PARTY_REMOVED",
-                    "A claim party was deactivated.", new { IsActive = true });
+                audit.Append(new ClaimAuditEvent(claim.OrganizationEntityId, claim.Id, actor, now, command.CorrelationId,
+                    "PARTY_REMOVED", "A claim party was deactivated.", new { IsActive = true },
+                    new { Role = party.Role.ToString(), party.IsActive }, party.Id, nameof(ClaimParty)));
             }
 
             var result = mapper.Map<ClaimPartyDto>(party);
@@ -86,8 +87,4 @@ internal sealed class ClaimPartyCommands(IClaimLifecycleStore store, IClaimUnitO
             return result;
         }, cancellationToken);
 
-    private void Append(Claim claim, ClaimParty party, Guid actor, DateTimeOffset now, Guid correlationId,
-        string eventType, string description, object? old = null) =>
-        audit.Append(new ClaimAuditEvent(claim.OrganizationEntityId, claim.Id, actor, now, correlationId, eventType,
-            description, old, new { Role = party.Role.ToString(), party.IsActive }, party.Id, nameof(ClaimParty)));
 }

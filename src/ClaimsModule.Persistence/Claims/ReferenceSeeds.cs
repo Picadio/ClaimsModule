@@ -36,22 +36,31 @@ internal static class ReferenceSeeds
             Cause(9, "COL-INJURY", "Bodily Injury", "Liability"),
             Cause(10, "COL-OTHER", "Other / Unknown", "General"));
 
-        modelBuilder.Entity<ClaimTransitionRule>().HasData(new ClaimTransitionRule[]
-        {
-            new(ClaimStatus.Draft, ClaimStatus.Open, UserRoles.Handler),
-            new(ClaimStatus.Open, ClaimStatus.UnderInvestigation, UserRoles.Handler),
-            new(ClaimStatus.Open, ClaimStatus.PendingPayment, UserRoles.Handler),
-            new(ClaimStatus.Open, ClaimStatus.Closed, UserRoles.Handler),
-            new(ClaimStatus.Open, ClaimStatus.Withdrawn, UserRoles.Handler),
-            new(ClaimStatus.UnderInvestigation, ClaimStatus.Open, UserRoles.Handler),
-            new(ClaimStatus.UnderInvestigation, ClaimStatus.PendingPayment, UserRoles.Handler),
-            new(ClaimStatus.UnderInvestigation, ClaimStatus.Closed, UserRoles.Handler),
-            new(ClaimStatus.UnderInvestigation, ClaimStatus.Withdrawn, UserRoles.Handler),
-            new(ClaimStatus.PendingPayment, ClaimStatus.Closed, UserRoles.Handler),
-            new(ClaimStatus.Closed, ClaimStatus.Reopened, UserRoles.Supervisor),
-            new(ClaimStatus.Reopened, ClaimStatus.Open, ClaimTransitionRule.SystemOnly)
-        });
+        modelBuilder.Entity<StoredClaimTransition>().HasData(
+            Transition(1, ClaimStatus.Draft, ClaimStatus.Open, UserRoles.Handler),
+            Transition(2, ClaimStatus.Open, ClaimStatus.UnderInvestigation, UserRoles.Handler),
+            Transition(3, ClaimStatus.Open, ClaimStatus.PendingPayment, UserRoles.Handler),
+            Transition(4, ClaimStatus.Open, ClaimStatus.Closed, UserRoles.Handler),
+            Transition(5, ClaimStatus.Open, ClaimStatus.Withdrawn, UserRoles.Handler),
+            Transition(6, ClaimStatus.UnderInvestigation, ClaimStatus.Open, UserRoles.Handler),
+            Transition(7, ClaimStatus.UnderInvestigation, ClaimStatus.PendingPayment, UserRoles.Handler),
+            Transition(8, ClaimStatus.UnderInvestigation, ClaimStatus.Closed, UserRoles.Handler),
+            Transition(9, ClaimStatus.UnderInvestigation, ClaimStatus.Withdrawn, UserRoles.Handler),
+            Transition(10, ClaimStatus.PendingPayment, ClaimStatus.Closed, UserRoles.Handler),
+            Transition(11, ClaimStatus.Closed, ClaimStatus.Reopened, UserRoles.Supervisor),
+            Transition(12, ClaimStatus.Reopened, ClaimStatus.Open, ClaimTransitionRule.SystemOnly));
     }
+
+    private static object Transition(int source, ClaimStatus from, ClaimStatus to, string permission) => new
+    {
+        Id = Guid.Parse(FormattableString.Invariant($"f44ba162-e62d-4f9e-9c25-{source:D12}")),
+        OrganizationEntityId = DemoOrganizationId,
+        CreatedAt = SeededAt,
+        IsDeleted = false,
+        FromStatus = from,
+        ToStatus = to,
+        RequiredPermission = permission
+    };
 
     private static object Policy(int source, string number, string client, DateOnly effective, DateOnly expiration,
         string status, string coverages) => new
