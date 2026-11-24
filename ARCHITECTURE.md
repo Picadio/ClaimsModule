@@ -1,5 +1,42 @@
 # ClaimsModule backend
 
+## Solution structure
+
+The Angular application is in a separate repository and calls the ASP.NET Core API over HTTPS. The API validates the Bearer token and resolves the caller's tenant, user ID and role. The five .NET projects in `ClaimsModule.sln` have these responsibilities and direct dependencies.
+
+| Project | Responsibility | Project dependencies |
+| --- | --- | --- |
+| Domain | Claim and reserve aggregates, state transitions, invariants and domain events | None |
+| Application | MediatR commands and queries, FluentValidation, DTOs, AutoMapper profiles and application interfaces | Domain |
+| Persistence | EF Core mappings and migrations, SQL stores, transactions and audit persistence | Application |
+| Infrastructure | Hangfire scheduling and dispatch, Azure Blob Storage and local file storage | Application |
+| API | HTTP contracts, JWT, error responses, request correlation and dependency injection | Application, Persistence, Infrastructure |
+
+## Data model
+
+| Entity | Relationships and purpose |
+| --- | --- |
+| Claim | Owns one loss event and collections of parties, risk objects and intake warnings. It can link to one simulated policy. |
+| Loss event and reference data | The loss event refers to a tenant's cause-of-loss code. Policies provide coverage dates and coverage types. Status transitions are seeded reference data. |
+| Reserve component and history | A claim can have multiple reserve components. Each component has a history of adjustments and approval decisions. A revision can refer to a rejected history row. |
+| Document and audit entry | A claim can have multiple documents and audit entries. SQL holds document metadata and the storage key. Audit entries can reference a related entity and carry the actor and correlation ID. |
+| User | SQL stores demo accounts, tenant scope and role. Claims record the assigned handler ID and reserve history records the submitter and approver IDs. |
+
+Tenant-scoped EF filters apply to business rows and exclude soft-deleted records. Tenant keys participate in relationships such as claim to loss event and reserve component to history. Claims and reserve components have row versions. A transaction allocates claim numbers from a counter scoped by organization and year. Financial amounts use SQL `decimal(19,4)`.
+
+## CQRS and domain events
+
+For FNOL, the controller sends a `CreateClaimCommand` through the MediatR validation pipeline. The handler resolves the caller and policy, runs the domain rules and saves the claim through `IClaimStore` and `IClaimUnitOfWork`. The SQL transaction covers the claim number, the claim and its children, audit rows, any initial reserve and the idempotency record. Later changes use a lock scoped to the tenant and claim. Queries such as `GetClaimQuery` use tenant-scoped stores to assemble the API response.
+
+The claim raises `ClaimCreated`. The Application layer publishes `ClaimCreatedNotification` and its handler records the creation and warning audit entries in the intake transaction. The claim status change notification records transitions in the status transaction. Reserve submission, decision and override notifications record financial audit events. After a reserve is approved and its transaction commits, `ReservePostingReady` requests Hangfire dispatch. The recovery job finds eligible postings if dispatch fails. The job design and duplicate detection are described below.
+
+## Azure deployment
+
+- The Angular App Service serves the SPA. Its startup config supplies the API origin. Browser requests use HTTPS and the API App Service CORS policy allows the frontend origin.
+- The API runs on a Linux App Service. It uses Azure SQL for claims and Hangfire storage. The demo API App Service connects to Azure SQL through VNet integration and the database's private endpoint.
+- The API stores files in the private `claim-documents` Azure Blob container. It issues time-limited read SAS URLs after checking claim access, and the browser downloads directly from Blob Storage.
+- GitHub Actions runs the SQL-backed backend tests on push. The manually triggered backend deployment publishes the API and then runs the EF migration bundle as a WebJob inside the API App Service, where it can reach Azure SQL. The workflow waits for the migration result before checking `GET /api/health`. Angular builds and deploys through the companion repository's workflow. [Backend workflow](.github/workflows/master_claimsmodule.yml) · [Frontend repository](https://github.com/Picadio/ClaimsModule-frontend)
+
 ## Claim lifecycle and audit
 
 The API exposes the lifecycle through MediatR commands and queries. Persistence

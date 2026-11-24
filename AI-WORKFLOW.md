@@ -46,3 +46,9 @@ The candidate later requested a global review of the code and deployed applicati
 The candidate reviewed the agent's output and directed the work. Codex supplied implementation and test results, while the Mentor and Reviewer provided additional checks. Automated tests, SQL Server integration tests, browser tests and Azure checks provided evidence for individual changes. Their results were reported for the runs actually performed, including skipped or unavailable checks.
 
 The recorded Azure retest included 142 API checks and a browser walkthrough. Backend CI ran 142 tests with SQL Server and frontend CI ran 15 Angular tests for the referenced revision. [Backend CI](https://github.com/Picadio/ClaimsModule/actions/runs/45168641489) · [Frontend CI](https://github.com/Picadio/ClaimsModule-frontend/actions/runs/45168684301)
+
+## Where AI helped most
+
+AI assistance was most valuable when turning business rules into edge cases and tracing failures across layers. Reviewing reserve submissions and GL recovery surfaced concurrency and tenant fairness issues that the normal demo flow did not exercise. Tracing an FNOL request from the Angular form through the API identified how a lost response could lead to a duplicate attempt and what the retry test needed to prove. [Backend review](AI-HISTORY.md#backend-implementation-and-review) · [Azure retest](AI-HISTORY.md#global-review-and-azure-retest)
+
+The candidate's input mattered most for requirements interpretation and deployment. The candidate chose the development order, questioned how the assessment described the five backend projects and helped check Azure Blob configuration and SAS downloads. SQL Server and Azure tests supplied evidence for behavior that code inspection alone could not verify. [Requirements discussion](AI-HISTORY.md#requirements-and-architecture) · [Blob verification](AI-HISTORY.md#swagger-and-blob-testing)
